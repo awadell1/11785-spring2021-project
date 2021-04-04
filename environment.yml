@@ -1,0 +1,22 @@
+name: idl-project
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7.10
+  - pytorch=1.7.1
+  - numpy=1.19
+  - torchvision
+  - pytorch-lightning=1.2.3
+  - pip=21.0.1
+  - wandb
+  - pytest
+  - cudatoolkit
+  - ipykernel
+  - matplotlib
+  - black
+  - pip:
+    - s3fs==0.4.2
+    - pylint==2.7.2
+    - nibabel

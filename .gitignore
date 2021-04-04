@@ -1,0 +1,29 @@
+
+# Ignore Data folder
+data/
+
+# Python Files
+*.pyc
+__pycache__/
+*.egg-info
+.ipynb_checkpoints/
+/env/
+
+# Coverage
+.coverage
+coverage.xml
+
+# Model Runs
+/runs/
+wandb/
+/runner/
+artifacts/
+
+# Misc
+*.zip
+*.pdf
+.DS_Store
+*.install
+*.out
+*.log
+secrets/
