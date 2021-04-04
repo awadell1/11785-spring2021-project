@@ -12,6 +12,7 @@ dependencies:
   - pip=21.0.1
   - wandb
   - pytest
+  - pytest-cov
   - cudatoolkit
   - ipykernel
   - matplotlib

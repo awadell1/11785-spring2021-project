@@ -1,0 +1,47 @@
+
+name: CI
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-2
+
+    - name: Run Unit Tests
+      run: |
+        make -v
+        make -j -dr test-coverage
+
+    - name: Submit coverage report for job
+      if: ${{ always() }}
+      run: |
+        python -m pip install --upgrade coveralls
+        coveralls -v --service=github
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COVERALLS_FLAG_NAME: ${{ github.job }}
+        COVERALLS_PARALLEL: true
+        COVERALLS_SERVICE_NAME: github-actions
+
+  coveralls:
+    name: Indicate completion to coveralls.io
+    needs: test
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    container: python:3-slim
+    steps:
+    - run: |
+        pip3 install --upgrade coveralls
+        coveralls -v --finish
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COVERALLS_SERVICE_NAME: github-actions
