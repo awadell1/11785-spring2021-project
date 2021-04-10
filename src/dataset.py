@@ -46,6 +46,12 @@ class Brats2017(Dataset):
         self.patches = patch_indices(input_shape, self.patch_shape)
         self.n_patches = len(self.patches)
 
+        # Record length
+        self.length = self.n_patches * len(self.patients)
+
+    def __len__(self):
+        return self.length
+
     def __getitem__(self, index):
         # Get Patient Index
         pdx, patch_idx = divmod(index, self.n_patches)

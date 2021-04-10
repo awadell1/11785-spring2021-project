@@ -1,5 +1,6 @@
 from os import name
 import torch
+from torch.utils.data.dataloader import DataLoader
 from src.dataset import Brats2017, patch_indices
 
 
@@ -38,3 +39,23 @@ def test_patch_indices():
     out = patch_indices(input_size, output_size)
     assert isinstance(out, list)
     assert len(out) == 4 * 8
+
+
+def test_dataloader():
+    ds = Brats2017("data/Brats17TrainingData")
+    batch_size = 8
+    dl = DataLoader(ds, batch_size=batch_size)
+    n_samples = 0
+    for batch in dl:
+        assert len(batch) == 2
+        data, label = batch
+        assert data.shape[0] == batch_size
+        assert label.shape[0] == batch_size
+
+        # Exit if running on full dataset (ie not on github)
+        if len(ds) > 100:
+            return
+        else:
+            n_samples += len(label)
+
+    assert n_samples == len(ds)
