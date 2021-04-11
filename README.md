@@ -9,6 +9,7 @@
 ```
 - src/              % Source Code
     - gan.py        % Implementation of "Brain Tumor Segmentation Using an Adversarial Network"
+    - cnn.py        % Implementation of "Automatic Brain Tu-mor Segmentation using Cascaded Anisotropic Convolutional Neural Net-works"
     - dataset.py    % DataLoader for working with the Brat2017 dataset
     - utils.py      % Various Helper Function for extending PyTorch's nn.Module
 - tests/            % PyTest Unit Tests for checking out model correctness.
