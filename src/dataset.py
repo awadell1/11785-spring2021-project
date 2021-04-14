@@ -14,7 +14,8 @@ class Brats2017(Dataset):
         direction="axial",
         patch_size=144,
         patch_depth=19,
-        data_type=np.float32,
+        data_type=torch.float32,
+        label_type=torch.int32,
         flat_patch=None,
     ) -> None:
         super().__init__()
@@ -25,6 +26,7 @@ class Brats2017(Dataset):
         self.direction = direction
         self.patch_shape = (patch_size, patch_size, patch_depth)
         self.data_type = data_type
+        self.label_type = label_type
         self.flat_patch = flat_patch or patch_depth == 1
 
         # Get list of patient folders
@@ -81,10 +83,15 @@ class Brats2017(Dataset):
             nii_data = nib.load(filename)
 
             # Slice to patch
-            patch = nii_data.slicer[patch_idx].get_fdata(dtype=self.data_type)
+            if mod in self.modality_postfix:
+                dtype = self.data_type
+            else:
+                dtype = self.label_type
+
+            patch = nii_data.slicer[patch_idx].get_fdata()
 
             # Convert to Tensor
-            nii_volumes.append(torch.from_numpy(patch))
+            nii_volumes.append(torch.from_numpy(patch).type(dtype))
 
         data = torch.stack(nii_volumes[0:-1], dim=0)
         labels = nii_volumes[-1]

@@ -36,12 +36,16 @@ def test_getitem_simple():
     # Try getting an item
     data, label = ds[0]
     check_type_and_shape(ds, data, label)
+    assert data.dtype == ds.data_type
+    assert label.dtype == ds.label_type
 
 
 def test_flat_patch():
     ds = Brats2017("data/Brats17TrainingData", patch_depth=1)
     data, label = ds[0]
     check_type_and_shape(ds, data, label, ndims=3)
+    assert data.dtype == ds.data_type
+    assert label.dtype == ds.label_type
 
 
 def test_patch_indices():
