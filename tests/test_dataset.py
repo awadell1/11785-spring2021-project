@@ -7,24 +7,26 @@ from src.dataset import Brats2017, patch_indices
 from pytest import approx
 
 
-def check_type_and_shape(ds: Brats2017, data: torch.Tensor, label: torch.Tensor):
+def check_type_and_shape(
+    ds: Brats2017, data: torch.Tensor, label: torch.Tensor, ndims=4
+):
     """ Confirm the type and shape of a returned sample """
 
     # Check data
     assert isinstance(data, torch.Tensor)
     data_shape = data.shape
-    assert len(data_shape) == 4
-    assert data_shape[-1] == len(ds.modality_postfix)
-    assert data_shape[0:3] == ds.patch_shape
+    assert len(data_shape) == ndims
+    assert data_shape[0] == len(ds.modality_postfix)
+    assert data_shape[1:] == ds.patch_shape[0 : ndims - 1]
     assert data.dtype == torch.float32
 
     # Check label
     assert isinstance(label, torch.Tensor)
     label_shape = label.shape
-    assert len(label_shape) == 3
+    assert len(label_shape) == ndims - 1
 
     # Cross-check
-    assert label_shape == data_shape[0:3]
+    assert label_shape == data_shape[1:]
 
 
 def test_getitem_simple():
@@ -34,6 +36,12 @@ def test_getitem_simple():
     # Try getting an item
     data, label = ds[0]
     check_type_and_shape(ds, data, label)
+
+
+def test_flat_patch():
+    ds = Brats2017("data/Brats17TrainingData", patch_depth=1)
+    data, label = ds[0]
+    check_type_and_shape(ds, data, label, ndims=3)
 
 
 def test_patch_indices():
@@ -89,6 +97,6 @@ def test_split():
         val_len = len(val)
         test_len = len(test)
         total_len = train_len + test_len + val_len
-        assert train_len / total_len == approx(0.7, rel=0.001)
-        assert val_len / total_len == approx(0.2, rel=0.001)
-        assert test_len / total_len == approx(0.1, rel=0.001)
+        assert train_len / total_len == approx(0.7, rel=0.01)
+        assert val_len / total_len == approx(0.2, rel=0.01)
+        assert test_len / total_len == approx(0.1, rel=0.01)

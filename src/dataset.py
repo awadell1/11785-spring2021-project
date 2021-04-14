@@ -15,6 +15,7 @@ class Brats2017(Dataset):
         patch_size=144,
         patch_depth=19,
         data_type=np.float32,
+        flat_patch=None,
     ) -> None:
         super().__init__()
 
@@ -24,6 +25,7 @@ class Brats2017(Dataset):
         self.direction = direction
         self.patch_shape = (patch_size, patch_size, patch_depth)
         self.data_type = data_type
+        self.flat_patch = flat_patch or patch_depth == 1
 
         # Get list of patient folders
         if isinstance(patients, list):
@@ -53,10 +55,25 @@ class Brats2017(Dataset):
         # Get patient
         data, label = self.get_patient(patient_dir, patch)
 
+        # Squeeze Depth iff flat_patch
+        if self.flat_patch:
+            data = data.squeeze(dim=3)
+            label = label.squeeze(dim=2)
+
         return data, label
 
     def get_patient(self, patient_dir: Path, patch_idx):
-        """ Load Patient Files from disk and stack modalities """
+        """Load Patient Files from disk and stack modalities
+
+        Returns
+            data: torch.Tensor of shape (C, H, W, D) where
+                C : 4 One for each MRI Scan
+                H, W, D : Volumetric patch from the MRI scan
+                    Note: Meaning of H, W, D varies with the patch direction
+            labels: torch.Tensor of shape (L, P, H, W, D) where
+                L - Semantic Segmentation of the Brain (Ie. Is this voxel a tumor?)
+                H, W, D  Volumetic Patch of the brain
+        """
         nii_volumes = []
         for mod in self.modality_postfix + [self.label_postfix]:
             # Get nii image
@@ -69,7 +86,7 @@ class Brats2017(Dataset):
             # Convert to Tensor
             nii_volumes.append(torch.from_numpy(patch))
 
-        data = torch.stack(nii_volumes[0:-1], dim=3)
+        data = torch.stack(nii_volumes[0:-1], dim=0)
         labels = nii_volumes[-1]
 
         return data, labels
@@ -94,7 +111,7 @@ class Brats2017(Dataset):
         return patients, patient_type
 
     @staticmethod
-    def split_dataset(root, **kwarg):
+    def split_dataset(root="data/Brats17TrainingData", **kwarg):
         """Splits the dataset in train, val, testing subsets using a 70-20-10
         stratified split.
         """
@@ -140,7 +157,6 @@ def patch_indices(input_size, output_size):
 
     # Don't shift to get final depth slice
     dim_slices.append(_slice_dim(input_size[2], output_size[2], shift_end=False))
-    print(dim_slices)
 
     # Iterate over slices
     indices = []
