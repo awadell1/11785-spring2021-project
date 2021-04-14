@@ -1,7 +1,12 @@
 import argparse
+from pathlib import Path
+from torch import tensor
 import wandb
+import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 import pytorch_lightning as pl
+import boto3
+from git import Repo
 
 
 class ModelArtifact(ModelCheckpoint):
@@ -40,3 +45,27 @@ class NNModule(pl.LightningModule):
             self.save_hyperparameters(conf)
         else:
             self.save_hyperparameters(self.default_args())
+
+
+def default_tags():
+    tags = []
+    try:
+        tags.append(Repo(".").head.reference.name)
+    except:
+        pass
+    return tags
+
+
+def fetch_model(Net, args):
+    s3 = boto3.client("s3")
+    ckpt = f"runs/{args.resume_from_checkpoint}/checkpoint.ckpt"
+    Path(ckpt).parent.mkdir(exist_ok=True, parents=True)
+    s3.download_file("11785-spring2021-hw3p2", ckpt, ckpt)
+    return Net.load_from_checkpoint(ckpt, **vars(args))
+
+
+def dice(y: torch.Tensor, y_hat: torch.Tensor):
+    y_cls = torch.argmax(y, dim=1)
+    intersect = torch.sum(y_cls == y_hat, dim=[1, 2])
+    union = y_hat[0].numel() + y_cls[0].numel()
+    return 2 * intersect / union
