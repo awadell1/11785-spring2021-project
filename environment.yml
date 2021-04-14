@@ -10,6 +10,7 @@ dependencies:
   - torchvision
   - pytorch-lightning=1.2.3
   - pip=21.0.1
+  - scikit-learn
   - wandb
   - pytest
   - pytest-cov

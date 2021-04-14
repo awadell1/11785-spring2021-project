@@ -1,20 +1,16 @@
-import gzip
-import shutil
 from pathlib import Path
 from itertools import product
 import numpy as np
-from numpy.core.numeric import indices
-from numpy.lib.function_base import append
 import torch
-from torch._C import dtype
 from torch.utils.data import Dataset
 import nibabel as nib
+from sklearn.model_selection import train_test_split
 
 
 class Brats2017(Dataset):
     def __init__(
         self,
-        root: Path,
+        patients: Path,
         direction="axial",
         patch_size=144,
         patch_depth=19,
@@ -23,7 +19,6 @@ class Brats2017(Dataset):
         super().__init__()
 
         # Parse Arguments
-        self.root = Path(root)
         self.modality_postfix = ["flair", "t1", "t1ce", "t2"]
         self.label_postfix = "seg"
         self.direction = direction
@@ -31,15 +26,12 @@ class Brats2017(Dataset):
         self.data_type = data_type
 
         # Get list of patient folders
-        patients = []
-        for grp in self.root.iterdir():
-            if not grp.is_dir():
-                continue
-            # Iterate over patient folders
-            for patient in grp.iterdir():
-                patients.append(patient)
-
-        self.patients = patients
+        if isinstance(patients, list):
+            # Input is the list of patient folders to use
+            self.patients = patients
+        else:
+            # Input is root of folder structure : root/group/patient_dir
+            self.patients, _ = Brats2017.get_patient_dirs(patients)
 
         # Get Patch Slices
         input_shape = (240, 240, 155)
@@ -81,6 +73,62 @@ class Brats2017(Dataset):
         labels = nii_volumes[-1]
 
         return data, labels
+
+    @staticmethod
+    def get_patient_dirs(root):
+        patient_type = []
+        patients = []
+        for grp in Path(root).iterdir():
+            if not grp.is_dir():
+                continue
+            # Iterate over patient folders
+            for patient in grp.iterdir():
+                # Check that directory is a patient dir
+                if not patient.name.startswith("Brats17"):
+                    continue
+
+                # Add patient to list
+                patients.append(patient)
+                patient_type.append(patient.parent.name)
+
+        return patients, patient_type
+
+    @staticmethod
+    def split_dataset(root, **kwarg):
+        """Splits the dataset in train, val, testing subsets using a 70-20-10
+        stratified split.
+        """
+
+        # Stratify patients based on HGG or LGG
+        patients, patient_type = Brats2017.get_patient_dirs(root)
+
+        # Spit into Train / Val+Test
+        split_1 = train_test_split(
+            patients,
+            patient_type,
+            train_size=0.7,
+            random_state=0,
+            stratify=patient_type,
+        )
+
+        # Split Val+Test into Val / Test
+        split_2 = train_test_split(
+            split_1[1],
+            split_1[3],
+            test_size=1 / 3,
+            random_state=0,
+            stratify=split_1[3],
+        )
+
+        #  Get train, val and test patients
+        train, val, test = split_1[0], split_2[0], split_2[1]
+
+        # Build datasets
+        return (
+            Brats2017(train, **kwarg),
+            Brats2017(val, **kwarg),
+            Brats2017(test, **kwarg),
+        )
 
 
 def patch_indices(input_size, output_size):
