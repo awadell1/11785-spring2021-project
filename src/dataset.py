@@ -15,7 +15,7 @@ class Brats2017(Dataset):
         patch_size=144,
         patch_depth=19,
         data_type=torch.float32,
-        label_type=torch.int32,
+        label_type=torch.long,
         flat_patch=None,
     ) -> None:
         super().__init__()
