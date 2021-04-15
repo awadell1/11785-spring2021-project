@@ -3,6 +3,7 @@ channels:
   - pytorch
   - conda-forge
   - defaults
+  - anaconda
 dependencies:
   - python=3.7.10
   - pytorch=1.7.1
@@ -19,6 +20,8 @@ dependencies:
   - ipykernel
   - matplotlib
   - black
+  - jq
+  - make
   - pip:
     - s3fs==0.4.2
     - pylint==2.7.2
