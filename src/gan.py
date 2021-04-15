@@ -82,7 +82,8 @@ class LiBrainTumorSegGan(util.NNModule):
         # Run through adversary
         batch_size = label.shape[0]
         adv_real = self.adversary.forward(patch, label_onehot)
-        real_loss = self.adversary.loss(adv_real, torch.ones(batch_size, 15, 15))
+        real_labels = torch.ones(batch_size, 15, 15).to(self.device)
+        real_loss = self.adversary.loss(adv_real, real_labels)
 
         # Training Segmenter
         if optimizer_idx == 0:
@@ -94,7 +95,8 @@ class LiBrainTumorSegGan(util.NNModule):
         elif optimizer_idx == 1:
             # Compute Fake Loss -> Loss
             adv_fake = self.adversary.forward(patch, gen_segment)
-            fake_loss = self.adversary.loss(adv_fake, torch.zeros(batch_size, 15, 15))
+            fake_labels = torch.ones(batch_size, 15, 15).to(self.device).to(self.device)
+            fake_loss = self.adversary.loss(adv_fake, fake_labels)
             loss = (real_loss + fake_loss) / 2
             self.log_dict({"adv_loss": loss})
 
