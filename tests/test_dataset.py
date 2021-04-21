@@ -31,7 +31,7 @@ def check_type_and_shape(
 
 def test_getitem_simple():
     # Default Dataset
-    ds = Brats2017("data/Brats17TrainingData")
+    ds = Brats2017("data/Brats17TrainingData", n_samples=10)
 
     # Try getting an item
     data, label = ds[0]
@@ -41,7 +41,7 @@ def test_getitem_simple():
 
 
 def test_flat_patch():
-    ds = Brats2017("data/Brats17TrainingData", patch_depth=1)
+    ds = Brats2017("data/Brats17TrainingData", patch_depth=1, n_samples=10)
     data, label = ds[0]
     check_type_and_shape(ds, data, label, ndims=3)
     assert data.dtype == ds.data_type
@@ -57,7 +57,7 @@ def test_patch_indices():
 
 
 def test_dataloader():
-    ds = Brats2017("data/Brats17TrainingData")
+    ds = Brats2017(["data/Brats17TrainingData/HGG/Brats17_2013_2_1"])
     batch_size = 8
     dl = DataLoader(ds, batch_size=batch_size)
     n_samples = 0
@@ -81,6 +81,7 @@ def test_split():
 
     # Construct Fake Dataset
     patients, _ = Brats2017.get_patient_dirs("data/Brats17TrainingData")
+    patients = patients[:2]
     with TemporaryDirectory() as fake_dataset:
         root = Path(fake_dataset)
         for grp in ["HGG", "LGG"]:
@@ -91,10 +92,10 @@ def test_split():
             for idx in range(10):
                 for pdx, p in enumerate(patients):
                     dst = grp_dir.joinpath(f"Brats17_{idx}_{pdx}")
-                    os.symlink(p, dst, target_is_directory=True)
+                    os.symlink(p.resolve(), dst, target_is_directory=True)
 
         # Split dataset
-        train, val, test = Brats2017.split_dataset(root)
+        train, val, test = Brats2017.split_dataset(root, load_ds=False)
 
         # Check size
         train_len = len(train)
