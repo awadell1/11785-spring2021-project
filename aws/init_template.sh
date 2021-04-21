@@ -11,9 +11,6 @@ echo 'conda activate pytorch_latest_p37' >> /home/$USER/.bashrc
 echo 'umask 077' >> /home/$USER/.bashrc
 echo 'umask 077' >> /home/$USER/.profile
 
-echo "Adding cron job for to push runs"
-echo "*/15 * * * * cd ~/$REPO && make runs-push" | crontab -u "$USER" -
-
 # Write run script to disk
 cat <<EOF > run_script.sh
 ${SCRIPT}

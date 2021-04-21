@@ -33,7 +33,7 @@ test-coverage: conda.install $(TEST_FILES)
 	$(CONDA_ACTIVATE)
 	python3 -m pytest --cov-report xml tests
 
-train-% : src/%.py conda.install
+train-% : src/%.py conda.install $(TRAIN_FILES)
 	$(CONDA_ACTIVATE)
 	python -m src.$* $(ARGS)
 
