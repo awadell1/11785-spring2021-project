@@ -17,6 +17,7 @@ class Brats2017(Dataset):
         data_type=torch.float32,
         label_type=torch.long,
         flat_patch=None,
+        n_samples=None,
     ) -> None:
         super().__init__()
 
@@ -32,18 +33,30 @@ class Brats2017(Dataset):
         # Get list of patient folders
         if isinstance(patients, list):
             # Input is the list of patient folders to use
-            self.patients = patients
+            self.patients_dirs = [Path(p) for p in patients]
         else:
             # Input is root of folder structure : root/group/patient_dir
-            self.patients, _ = Brats2017.get_patient_dirs(patients)
+            self.patients_dirs, _ = Brats2017.get_patient_dirs(patients)
+
+        if n_samples is not None:
+            self.patients_dirs = self.patients_dirs[:n_samples]
+
+        # Load scans into memore
+        scans = []
+        labels = []
+        for p_dir in self.patients_dirs:
+            scan, label = self.load_patient(p_dir)
+            scans.append(scan)
+            labels.append(label)
+        self.mri_scans = torch.stack(scans, dim=0)
+        self.mri_labels = torch.stack(labels, dim=0)
 
         # Get Patch Slices
-        input_shape = (240, 240, 155)
-        self.patches = patch_indices(input_shape, self.patch_shape)
+        self.patches = patch_indices(self.mri_scans.shape[2:], self.patch_shape)
         self.n_patches = len(self.patches)
 
         # Record length
-        self.length = self.n_patches * len(self.patients)
+        self.length = self.n_patches * len(self.patients_dirs)
 
     def __len__(self):
         return self.length
@@ -51,20 +64,20 @@ class Brats2017(Dataset):
     def __getitem__(self, index):
         # Get Patient Index
         pdx, patch_idx = divmod(index, self.n_patches)
-        patient_dir = self.patients[pdx]
         patch = self.patches[patch_idx]
 
         # Get patient
-        data, label = self.get_patient(patient_dir, patch)
+        scan = self.mri_scans[pdx].__getitem__(patch)
+        label = self.mri_labels[pdx].__getitem__(patch[1:])
 
         # Squeeze Depth iff flat_patch
         if self.flat_patch:
-            data = data.squeeze(dim=3)
+            scan = scan.squeeze(dim=3)
             label = label.squeeze(dim=2)
 
-        return data, label
+        return scan, label
 
-    def get_patient(self, patient_dir: Path, patch_idx):
+    def load_patient(self, patient_dir: Path):
         """Load Patient Files from disk and stack modalities
 
         Returns
@@ -88,7 +101,7 @@ class Brats2017(Dataset):
             else:
                 dtype = self.label_type
 
-            patch = nii_data.slicer[patch_idx].get_fdata()
+            patch = nii_data.get_fdata()
 
             # Convert to Tensor
             nii_volumes.append(torch.from_numpy(patch).type(dtype))
@@ -118,9 +131,14 @@ class Brats2017(Dataset):
         return patients, patient_type
 
     @staticmethod
-    def split_dataset(root="data/Brats17TrainingData", **kwarg):
+    def split_dataset(root="data/Brats17TrainingData", load_ds=True, **kwarg):
         """Splits the dataset in train, val, testing subsets using a 70-20-10
         stratified split.
+            Inputs
+                root: Path to folder where Brats17 Dataset is stored
+                load_ds=True: Iff false will just return the paths to the patient dirs
+                **kwargs: Additional optional arguments to pass to Brats2017 when creating
+                the datasets
         """
 
         # Stratify patients based on HGG or LGG
@@ -147,6 +165,10 @@ class Brats2017(Dataset):
         #  Get train, val and test patients
         train, val, test = split_1[0], split_2[0], split_2[1]
 
+        # Check if we just want the patient names
+        if not load_ds:
+            return train, val, test
+
         # Build datasets
         return (
             Brats2017(train, **kwarg),
@@ -167,8 +189,9 @@ def patch_indices(input_size, output_size):
 
     # Iterate over slices
     indices = []
+    n_mod = 4
     for h, w, d in product(*dim_slices):
-        indices.append((h, w, d))
+        indices.append((slice(n_mod), h, w, d))
     return indices
 
 
