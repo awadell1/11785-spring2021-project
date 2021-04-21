@@ -66,6 +66,6 @@ def fetch_model(Net, args):
 
 def dice(y: torch.Tensor, y_hat: torch.Tensor):
     y_cls = torch.argmax(y, dim=1)
-    intersect = torch.sum(y_cls == y_hat, dim=[1, 2])
+    intersect = torch.sum(y_cls * y_hat, dim=[1, 2])
     union = y_hat[0].numel() + y_cls[0].numel()
     return 2 * intersect / union
