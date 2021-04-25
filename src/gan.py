@@ -89,8 +89,6 @@ class LiBrainTumorSegGan(util.NNModule):
         patch, label = batch
         batch_size = patch.shape[0]
 
-        print(f"optimizer_idx: {optimizer_idx}")
-
         # Zero out gradients
         seg_opt, adv_opt = self.optimizers()
         seg_opt.zero_grad()
