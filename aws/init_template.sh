@@ -4,9 +4,6 @@ echo "Uptime: $(cat /proc/uptime)"
 # CONFIG
 USER=ubuntu
 
-# Activate conda environment
-echo 'conda activate pytorch_latest_p37' >> /home/$USER/.bashrc
-
 # Ensure files are private
 echo 'umask 077' >> /home/$USER/.bashrc
 echo 'umask 077' >> /home/$USER/.profile

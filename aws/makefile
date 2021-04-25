@@ -15,3 +15,11 @@ spot-train-sweep: sweep-cmd conda.install ${TRAIN_FILES}
 .PHONY: sweep-cmd
 sweep-cmd:
 	[ ! -z "$(SWEEP_CMD)" ] || exit 1
+
+.PHONY:
+mkswap:
+	set -e
+	sudo dd if=/dev/zero of=/swapfile bs=128M count=128
+	sudo chmod 600 /swapfile
+	sudo mkswap /swapfile
+	sudo swapon /swapfile
