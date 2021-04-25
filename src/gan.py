@@ -111,7 +111,11 @@ class LiBrainTumorSegGan(util.NNModule):
         if (self.global_step % (2 * gan_epoch)) > gan_epoch:
             loss = self.segmenter.loss(gan_out, label_downsample) + real_loss
             dsc = util.dice(gan_out, label_downsample).mean()
-            self.log_dict({"gen_loss": loss, "train_dice": dsc})
+            self.log_dict(
+                {"gen_loss": loss, "train_dice": dsc},
+                prog_bar=True,
+                on_step=True,
+            )
 
             # Update Segmenter's Weights
             self.manual_backward(loss)
@@ -126,8 +130,11 @@ class LiBrainTumorSegGan(util.NNModule):
             )
             fake_loss = self.adversary.loss(adv_fake, fake_labels)
             loss = (real_loss + fake_loss) / 2
-            self.log_dict({"adv_loss": loss})
-
+            self.log_dict(
+                {"adv_loss": loss},
+                prog_bar=True,
+                on_step=True,
+            )
             # Train Adversary
             self.manual_backward(loss)
             adv_opt.step()
