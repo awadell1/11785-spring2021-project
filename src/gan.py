@@ -255,7 +255,7 @@ def train(args):
             util.ModelArtifact(
                 dirpath=f"s3://11785-spring2021-hw3p2/LiBrainTumorGAN/runs/{wandb_logger.experiment.id}",
                 filename="checkpoint",
-                monitor="val_levenshtein",
+                monitor="gen_loss",
                 mode="min",
                 save_top_k=1,
                 verbose=True,
@@ -278,7 +278,10 @@ def train(args):
 
     # Get train/val dataloaders
     train_ds, val_ds, _ = Brats2017.split_dataset(
-        direction="axial", patch_size=31, patch_depth=1
+        direction="axial",
+        patch_size=31,
+        patch_depth=1,
+        n_samples=30,
     )
     train_dl = DataLoader(
         train_ds,
