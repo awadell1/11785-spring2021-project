@@ -7,10 +7,21 @@ from torch.utils.data import DataLoader
 import time
 from dataset import *
 
+hyper = {
+  "dataPath": "./data_root",
+  "batchSize": 5,
+  "lr":1e-3,
+  "weightDecay":1e-7,
+  "nEpochs":20,
+  "checkpointPath": "./gdrive/MyDrive/11685/project/checkpoint/",
+  "seed":20,
+  "load_model":False,
+  "c_o":32,
+  "c_l":2,
+  "dice":True
+}
 
 #modified code from: 
-
-
 class conv(nn.Module):
     def __init__(self,in_ch,out_ch):
         super(conv,self).__init__()
@@ -161,9 +172,9 @@ class WNET(nn.Module):
         x=torch.cat([x0,x1,x],dim=1)
         x=self.out(x)
         x= F.sigmoid(x)
-        # if self.dice:
-        #   return x, torch.argmax(x,axis=1)
-        return x, torch.argmax(x,axis=1)
+        if self.dice:
+          return torch.argmax(x,axis=1)
+        return x
 
 class ENET(nn.Module):
     def __init__(self,n_channels,out_ch,n_classes,dice=hyper["dice"]):
@@ -191,7 +202,10 @@ class ENET(nn.Module):
         x = torch.cat([x0, x1, x], dim=1)
         x = self.out(x)
         x= F.sigmoid(x)
-        return x, torch.argmax(x,axis=1)
+        if self.dice:
+          return torch.argmax(x,axis=1)
+        return x
+
 
 
 def get_loaders(batchSize, train_set, val_set, test_set):
@@ -212,7 +226,6 @@ def get_loaders(batchSize, train_set, val_set, test_set):
   test_loader = DataLoader(test_set, **test_loader_args)
   
   return train_loader, dev_loader, test_loader
-
 def evaluate(models, data_set, criterion, epoch):
   label_values = [1,2,4]
   start_time = time.time()
@@ -220,21 +233,18 @@ def evaluate(models, data_set, criterion, epoch):
     for batch_idx, (data, target) in enumerate(data_set):
       data, original_target = data.cuda(), target.cuda()
       for i in range(len(models)):
-        target = (original_target==label_values[i]).type(torch.cuda.FloatTensor)
+        target = (original_target>=label_values[i]).type(torch.cuda.FloatTensor)
         data=data.type(torch.cuda.FloatTensor)
         model = models[i]
         if i>0:
           data=torch.unsqueeze(data,axis=1)
         # optimizer = optimizers[i]
         # optimizer.zero_grad()
-        if hyper["dice"]:
-          out, data = model(data)
-        else:
-          out, data = model(data)        
+        data = model(data)        
         if hyper["dice"]:
           loss = criterion(data,target) 
         else:
-          loss = criterion(out.type(torch.cuda.FloatTensor), target.type(torch.int64))        
+          loss = criterion(data.type(torch.cuda.FloatTensor), target.type(torch.int64))        
       dice = Dice(data,target)
       if batch_idx % 50 == 0:
           print("Evaluating Epoch: {}\tBatch: {}\tTimestamp: {}\tLoss: {}\tDice:{}".format(epoch, batch_idx, time.time() - start_time, loss, dice))   
@@ -247,10 +257,10 @@ def train_epoch(models, data_set, criterion, optimizers, epoch):
   start_time = time.time()
   label_values = [1,2,4]
 
-  for batch_idx, (data, target) in enumerate(data_set):
+  for batch_idx, (data, original_target) in enumerate(data_set):
     # if batch_idx>=0:
     #   break
-    data, original_target = data.cuda(), target.cuda()
+    data, original_target = data.cuda(), original_target.cuda()
     # data.requires_grad_(True)
     for i in range(len(models)):
       
@@ -261,23 +271,26 @@ def train_epoch(models, data_set, criterion, optimizers, epoch):
         data = target
         data=torch.unsqueeze(data,axis=1)
       # data=torch.unsqueeze(data,axis=0)
-      if hyper["dice"]:
-        out, data = model(data)
-      else:
-        out, data = model(data)
+      data = model(data)
       data = data.type(torch.cuda.FloatTensor)
-      target = (original_target==label_values[i]).type(torch.cuda.FloatTensor)
-      data.requires_grad_(True)
-      target.requires_grad_(True)
+      target = (original_target>=label_values[i]).type(torch.cuda.FloatTensor)
       if hyper["dice"]:
+        data.requires_grad_(True)
+        target.requires_grad_(True)
         loss = criterion(data,target) 
       else:
-        loss = criterion(out.type(torch.cuda.FloatTensor), target.type(torch.int64))
+        loss = criterion(data.type(torch.cuda.FloatTensor), target.type(torch.int64))
       loss.backward()
       optimizer.step()
-      if batch_idx % 50 == 0:
+      if batch_idx % 20 == 0:
           print("Epoch: {}\tBatch: {}\tTimestamp: {}\tLoss: {}".format(epoch, batch_idx, time.time() - start_time, loss))     
+      del loss
+      del data
+      if i==2:
+        del target
+        del original_target
       torch.cuda.empty_cache()
+
     # if batch_idx > 1:
     #   break
     
@@ -305,7 +318,10 @@ class DiceLoss(nn.Module):
         
         intersection = (inputs * targets).sum()                            
         dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)  
-        
+        del intersection
+        del inputs
+        del targets
+        torch.cuda.empty_cache()
         return 1 - dice
 
 def Dice(inputs, targets, smooth=2):
@@ -327,61 +343,42 @@ def Dice(inputs, targets, smooth=2):
   return dice
 
 
-hyper = {
-  "dataPath": "./data_root",
-  "batchSize": 5,
-  "lr":1e-3,
-  "weightDecay":1e-7,
-  "nEpochs":20,
-  "checkpointPath": "./gdrive/MyDrive/11685/project/checkpoint/",
-  "seed":20,
-  "load_model":False,
-  "c_o":32,
-  "c_l":2,
-  "dice":False
-}
 
 def main():
-    #Create data loaders
-    train_path = "data/Brats17TrainingData"
-    val_path = "data/Brats17TrainingData"
-    test_path = "data/Brats17TrainingData"
+  np.random.seed(hyper["seed"])
+  torch.manual_seed(hyper["seed"])
+  torch.cuda.manual_seed(hyper["seed"])
 
-    dataset = Brats2017(train_path)
-    train_set, val_set, test_set = dataset.split_dataset(train_path)
-    train_loader, dev_loader, test_loader = get_loaders(5, train_set, val_set, test_set)
+  print("*** Create the model and define Loss and Optimizer ***")
 
-    np.random.seed(hyper["seed"])
-    torch.manual_seed(hyper["seed"])
-    torch.cuda.manual_seed(hyper["seed"])
+  wnet = WNET(4, hyper["c_o"], hyper["c_l"])
+  tnet = WNET(1,hyper["c_o"], hyper["c_l"])
+  enet = ENET(1,hyper["c_o"], hyper["c_l"])
 
-    print("*** Create the model and define Loss and Optimizer ***")
+  #Kaiming init
 
-    wnet = WNET(4, hyper["c_o"], hyper["c_l"])
-    tnet = WNET(1,hyper["c_o"], hyper["c_l"])
-    enet = ENET(1,hyper["c_o"], hyper["c_l"])
+  wnet, tnet, enet = wnet.cuda(), tnet.cuda(), enet.cuda()
+  models = [wnet, tnet, enet]
 
-    wnet, tnet, enet = wnet.cuda(), tnet.cuda(), enet.cuda()
-    models = [wnet, tnet, enet]
+  # checkpoint = torch.load(hyper["savedCheckpoint"])
+  # model.load_state_dict(checkpoint["model_state_dict"])
+  optimizer_w = optim.Adam(wnet.parameters(), lr=hyper["lr"], weight_decay=hyper["weightDecay"])
+  optimizer_t = optim.Adam(tnet.parameters(), lr=hyper["lr"], weight_decay=hyper["weightDecay"])
+  optimizer_e = optim.Adam(enet.parameters(), lr=hyper["lr"], weight_decay=hyper["weightDecay"])
 
-    # checkpoint = torch.load(hyper["savedCheckpoint"])
-    # model.load_state_dict(checkpoint["model_state_dict"])
-    optimizer_w = optim.Adam(wnet.parameters(), lr=hyper["lr"], weight_decay=hyper["weightDecay"])
-    optimizer_t = optim.Adam(tnet.parameters(), lr=hyper["lr"], weight_decay=hyper["weightDecay"])
-    optimizer_e = optim.Adam(enet.parameters(), lr=hyper["lr"], weight_decay=hyper["weightDecay"])
+  optimizers = [optimizer_w, optimizer_t, optimizer_e]
 
-    optimizers = [optimizer_w, optimizer_t, optimizer_e]
+  if hyper["dice"]:
+    criterion = DiceLoss()
+  else:
+    weight = torch.FloatTensor([0.005,0.995]).cuda()
+    criterion = nn.CrossEntropyLoss(weight=weight)
 
-    if hyper["dice"]:
-        criterion = DiceLoss()
-    else:
-        criterion = nn.CrossEntropyLoss()
+  # Train the model for N epochs
+  for i in range(hyper["nEpochs"]):
 
-    # Train the model for N epochs
-    for i in range(hyper["nEpochs"]):
-
-        # Train
-        print("Train\tEpoch: {}".format(i))
-        startTime = time.time()
-        train_epoch(models, train_loader, criterion, optimizers, i)
+    # Train
+    print("Train\tEpoch: {}".format(i))
+    startTime = time.time()
+    train_epoch(models, train_loader, criterion, optimizers, i)
 
