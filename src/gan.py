@@ -32,6 +32,9 @@ class LiBrainTumorSegGan(util.NNModule):
     Springer International Publishing, 2018, pp. 123–132.
     """
 
+    input_size = (4, 15, 15)  # (MRI, H, W)
+    output_size = (5, 15, 15)  # (Class, H, W)
+
     @classmethod
     def add_argparse_args(cls, parent=None):
         parser = super().add_argparse_args(parent=parent)
@@ -50,6 +53,9 @@ class LiBrainTumorSegGan(util.NNModule):
         parser.add_argument("--adv_beta2", type=float, default=0.999)
         parser.add_argument("--adv_gamma", type=float, default=0.96)
 
+        # Overall
+        parser.add_argument("--gan_epoch", type=int, default=500)
+
         return parser
 
     def __init__(self, conf):
@@ -63,45 +69,76 @@ class LiBrainTumorSegGan(util.NNModule):
         # Adversary
         self.adversary = LiBrainTumorSegAdv()
 
+        # Enable Manual Optimization
+        self.automatic_optimization = False
+
     def forward(self, x):
         """ Predict Segmentation from input patch """
         return self.segmenter(x)
 
+    def one_hot(self, label, dtype):
+        """ One-Hot Encoding of Segmenter's results """
+        label_onehot = nn.functional.one_hot(label, num_classes=self.output_size[0])
+        label_onehot.requires_grad_(False)
+        label_onehot = label_onehot.type(dtype).transpose_(-1, 1)
+        label_onehot = label_onehot.to(device=self.device)
+        return label_onehot
+
     def training_step(self, batch, batch_idx, optimizer_idx):
         """ Train GAN on single batch """
         patch, label = batch
+        batch_size = patch.shape[0]
+
+        print(f"optimizer_idx: {optimizer_idx}")
+
+        # Zero out gradients
+        seg_opt, adv_opt = self.optimizers()
+        seg_opt.zero_grad()
+        adv_opt.zero_grad()
 
         # Run through segmenter
         gan_out, gen_segment = self.segmenter(patch)
 
         # Downsample label from 31x31 -> 15x15 and convert to one_hot encoding
         label_downsample = label[:, 1::2, 1::2]
-        label_onehot = nn.functional.one_hot(label_downsample, num_classes=5)
-        label_onehot = label_onehot.type(patch.dtype).transpose(-1, 1)
-        label_onehot = label_onehot.to(self.device)
+        label_onehot = self.one_hot(label_downsample, patch.dtype)
 
         # Run through adversary
-        batch_size = label.shape[0]
         adv_real = self.adversary.forward(patch, label_onehot)
-        real_labels = torch.ones(batch_size, 15, 15).to(self.device)
+        real_labels = self.adversary.real_label(batch_size, adv_real.dtype, self.device)
         real_loss = self.adversary.loss(adv_real, real_labels)
 
         # Training Segmenter
-        if optimizer_idx == 0:
+        gan_epoch = self.hparams["gan_epoch"]
+        if (self.global_step % gan_epoch) > gan_epoch:
             loss = self.segmenter.loss(gan_out, label_downsample) + real_loss
             dsc = util.dice(gan_out, label_downsample).mean()
             self.log_dict({"gen_loss": loss, "train_dice": dsc})
 
+            # Update Segmenter's Weights
+            self.manual_backward(loss)
+            seg_opt.step()
+
         # Training Adversary
-        elif optimizer_idx == 1:
+        else:
             # Compute Fake Loss -> Loss
             adv_fake = self.adversary.forward(patch, gen_segment)
-            fake_labels = torch.ones(batch_size, 15, 15).to(self.device)
+            fake_labels = self.adversary.fake_label(
+                batch_size, adv_fake.dtype, self.device
+            )
             fake_loss = self.adversary.loss(adv_fake, fake_labels)
             loss = (real_loss + fake_loss) / 2
             self.log_dict({"adv_loss": loss})
 
+            # Train Adversary
+            self.manual_backward(loss)
+            adv_opt.step()
+
         return loss
+
+    def on_train_epoch_end(self, outputs) -> None:
+        self.lr_scheduler()
+        return super().on_train_epoch_end(outputs)
 
     def validation_step(self, batch, batch_idx):
         # Compute Segmentation Loss
@@ -211,12 +248,47 @@ class LiBrainTumorSegAdv(nn.Module):
 
         self.loss = nn.BCEWithLogitsLoss()
 
+        # Placeholders for real/fake labels
+        self._batch_size = None
+        self._fake_label = None
+        self._real_label = None
+
     def forward(self, mri_patch, mri_segment):
         # Predicts 1 iff mri_segment is real
         patch_feat = self.mri_features(mri_patch)
         seg_feat = self.seg_features(mri_segment)
         x = torch.cat((patch_feat, seg_feat), dim=1)
         return self.discriminator(x).squeeze(1)
+
+    def real_label(self, batch_size, dtype, device):
+        """ Return a real label for use in training """
+        label = self._get_label(self._real_label, 1, batch_size, dtype, device)
+        self._batch_size = batch_size
+        self._real_label = label
+        return label
+
+    def fake_label(self, batch_size, dtype, device):
+        """ Return a fake label for use in training """
+        label = self._get_label(self._fake_label, 0, batch_size, dtype, device)
+        self._batch_size = batch_size
+        self._fake_label = label
+        return label
+
+    def _get_label(
+        self, label: torch.Tensor, fill_value, batch_size, dtype, device
+    ) -> torch.Tensor:
+
+        """ Return the real_labels size """
+        if label is None or batch_size != self._batch_size:
+            return torch.full(
+                (batch_size, 15, 15),
+                fill_value,
+                requires_grad=False,
+                dtype=dtype,
+                device=device,
+            )
+        else:
+            return label
 
 
 class CNNBlock(nn.Module):
@@ -255,8 +327,8 @@ def train(args):
             ModelCheckpoint(
                 dirpath=f"s3://11785-spring2021-hw3p2/LiBrainTumorGAN/runs/{wandb_logger.experiment.id}",
                 filename="checkpoint",
-                monitor="gen_loss",
-                mode="min",
+                monitor="val_dice",
+                mode="max",
                 save_top_k=1,
                 verbose=True,
             ),
@@ -281,7 +353,7 @@ def train(args):
         direction="axial",
         patch_size=31,
         patch_depth=1,
-        n_samples=30,
+        n_samples=20,
     )
     train_dl = DataLoader(
         train_ds,
