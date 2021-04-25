@@ -110,7 +110,7 @@ class LiBrainTumorSegGan(util.NNModule):
 
         # Training Segmenter
         gan_epoch = self.hparams["gan_epoch"]
-        if (self.global_step % gan_epoch) > gan_epoch:
+        if (self.global_step % (2 * gan_epoch)) > gan_epoch:
             loss = self.segmenter.loss(gan_out, label_downsample) + real_loss
             dsc = util.dice(gan_out, label_downsample).mean()
             self.log_dict({"gen_loss": loss, "train_dice": dsc})
@@ -135,10 +135,6 @@ class LiBrainTumorSegGan(util.NNModule):
             adv_opt.step()
 
         return loss
-
-    def on_train_epoch_end(self, outputs) -> None:
-        self.lr_scheduler()
-        return super().on_train_epoch_end(outputs)
 
     def validation_step(self, batch, batch_idx):
         # Compute Segmentation Loss
