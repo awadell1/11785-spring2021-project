@@ -12,7 +12,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from psutil import cpu_count
 
 # Load code from disk
@@ -252,7 +252,7 @@ def train(args):
         flush_logs_every_n_steps=10,
         max_epochs=args.max_epochs,
         callbacks=[
-            util.ModelArtifact(
+            ModelCheckpoint(
                 dirpath=f"s3://11785-spring2021-hw3p2/LiBrainTumorGAN/runs/{wandb_logger.experiment.id}",
                 filename="checkpoint",
                 monitor="gen_loss",

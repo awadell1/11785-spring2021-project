@@ -16,7 +16,7 @@ class ModelArtifact(ModelCheckpoint):
         # Log artifact at most once
         run = trainer.logger.experiment
         artifact = wandb.Artifact(run.id, type="checkpoint")
-        if not artifact.logged_by:
+        if not artifact.logged_by():
             artifact.add_reference(filepath, checksum=False)
             run.log_artifact(artifact)
 
