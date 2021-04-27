@@ -9,8 +9,8 @@ dependencies:
   - pytorch=1.7.1
   - numpy=1.19
   - torchvision
-  - pytorch-lightning=1.2.3
-  - pip=21.0.1
+  - pytorch-lightning=1.2
+  - pip
   - boto3
   - scikit-learn
   - wandb
@@ -24,5 +24,5 @@ dependencies:
   - make
   - pip:
     - s3fs==0.4.2
-    - pylint==2.7.2
+    - pylint
     - nibabel
