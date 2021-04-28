@@ -40,11 +40,11 @@ class Brats2017(Dataset):
 
         if n_samples is not None:
             self.patients_dirs = self.patients_dirs[:n_samples]
-
         # Load scans into memore
         scans = []
         labels = []
-        for p_dir in self.patients_dirs:
+        for idx, p_dir in enumerate(self.patients_dirs):
+            print(f"Loading patient {idx} from {p_dir}")
             scan, label = self.load_patient(p_dir)
             scans.append(scan)
             labels.append(label)

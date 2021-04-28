@@ -73,11 +73,11 @@ class LiBrainTumorSegGan(util.NNModule):
         self.automatic_optimization = False
 
     def forward(self, x):
-        """ Predict Segmentation from input patch """
+        """Predict Segmentation from input patch"""
         return self.segmenter(x)
 
     def one_hot(self, label, dtype):
-        """ One-Hot Encoding of Segmenter's results """
+        """One-Hot Encoding of Segmenter's results"""
         label_onehot = nn.functional.one_hot(label, num_classes=self.output_size[0])
         label_onehot.requires_grad_(False)
         label_onehot = label_onehot.type(dtype).transpose_(-1, 1)
@@ -85,7 +85,7 @@ class LiBrainTumorSegGan(util.NNModule):
         return label_onehot
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        """ Train GAN on single batch """
+        """Train GAN on single batch"""
         patch, label = batch
         batch_size = patch.shape[0]
 
@@ -262,14 +262,14 @@ class LiBrainTumorSegAdv(nn.Module):
         return self.discriminator(x).squeeze(1)
 
     def real_label(self, batch_size, dtype, device):
-        """ Return a real label for use in training """
+        """Return a real label for use in training"""
         label = self._get_label(self._real_label, 1, batch_size, dtype, device)
         self._batch_size = batch_size
         self._real_label = label
         return label
 
     def fake_label(self, batch_size, dtype, device):
-        """ Return a fake label for use in training """
+        """Return a fake label for use in training"""
         label = self._get_label(self._fake_label, 0, batch_size, dtype, device)
         self._batch_size = batch_size
         self._fake_label = label
@@ -279,7 +279,7 @@ class LiBrainTumorSegAdv(nn.Module):
         self, label: torch.Tensor, fill_value, batch_size, dtype, device
     ) -> torch.Tensor:
 
-        """ Return the real_labels size """
+        """Return the real_labels size"""
         if label is None or batch_size != self._batch_size:
             return torch.full(
                 (batch_size, 15, 15),
@@ -350,21 +350,22 @@ def train(args):
     wandb_logger.watch(model, log_freq=1000)
 
     # Get train/val dataloaders
-    train_ds, val_ds, _ = Brats2017.split_dataset(
-        direction="axial",
-        patch_size=31,
-        patch_depth=1,
-        n_samples=args.limit_patients,
-    )
+    train_ds, val_ds, _ = Brats2017.split_dataset(load_ds=False)
+    dl_args = {
+        "direction": "axial",
+        "patch_size": 31,
+        "patch_depth": 1,
+        "n_samples": args.limit_patients,
+    }
     train_dl = DataLoader(
-        train_ds,
+        Brats2017(train_ds, **dl_args),
         batch_size=args.batch_size,
         pin_memory=True,
         shuffle=True,
         num_workers=cpu_count() if torch.has_cuda else 0,
     )
     val_dl = DataLoader(
-        val_ds,
+        Brats2017(val_ds, **dl_args),
         batch_size=32,
         pin_memory=True,
         num_workers=cpu_count() if torch.has_cuda else 0,
