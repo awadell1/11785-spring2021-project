@@ -56,9 +56,9 @@ def default_tags():
     return tags
 
 
-def fetch_model(Net, args):
+def fetch_model(Net, project, args):
     s3 = boto3.client("s3")
-    ckpt = f"runs/{args.resume_from_checkpoint}/checkpoint.ckpt"
+    ckpt = f"{project}/runs/{args.resume_from_checkpoint}/checkpoint.ckpt"
     Path(ckpt).parent.mkdir(exist_ok=True, parents=True)
     s3.download_file("11785-spring2021-project", ckpt, ckpt)
     return Net.load_from_checkpoint(ckpt, **vars(args))

@@ -326,7 +326,7 @@ def train(args):
         max_epochs=args.max_epochs,
         callbacks=[
             ModelCheckpoint(
-                dirpath=f"s3://11785-spring2021-hw3p2/LiBrainTumorGAN/runs/{wandb_logger.experiment.id}",
+                dirpath=f"s3://11785-spring2021-project/{wandb_logger.project}/runs/{wandb_logger.experiment.id}",
                 filename="checkpoint",
                 monitor="val_dice",
                 mode="max",
@@ -340,7 +340,7 @@ def train(args):
 
     # Create Model
     if args.resume_from_checkpoint:
-        model = util.fetch_model(LiBrainTumorSegGan, args)
+        model = util.fetch_model(LiBrainTumorSegGan, wandb_logger.project, args)
     else:
         model = LiBrainTumorSegGan(args)
 
