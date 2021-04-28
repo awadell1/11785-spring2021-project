@@ -21,7 +21,7 @@ sweep-cmd:
 mkswap: SWAP_COUNT ?= 128
 mkswap:
 	set -e
-	sudo dd if=/dev/zero of=/swapfile bs=128M count=$(SWAP_COUNT)
+	sudo dd if=/dev/zero of=/swapfile bs=128M count=$(SWAP_COUNT) status=progress
 	sudo chmod 600 /swapfile
 	sudo mkswap /swapfile
 	sudo swapon /swapfile
