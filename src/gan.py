@@ -70,7 +70,7 @@ class LiBrainTumorSegGan(util.NNModule):
         self.adversary = LiBrainTumorSegAdv()
 
         # Enable Manual Optimization
-        self.automatic_optimization = False
+        self.automatic_optimization = True
 
     def forward(self, x):
         """Predict Segmentation from input patch"""
@@ -89,55 +89,14 @@ class LiBrainTumorSegGan(util.NNModule):
         patch, label = batch
         batch_size = patch.shape[0]
 
-        # Zero out gradients
-        seg_opt, adv_opt = self.optimizers()
-        seg_opt.zero_grad()
-        adv_opt.zero_grad()
-
         # Run through segmenter
-        gan_out, gen_segment = self.segmenter(patch)
+        gan_out = self.segmenter(patch)[0]
 
         # Downsample label from 31x31 -> 15x15 and convert to one_hot encoding
         label_downsample = label[:, 1::2, 1::2]
-        label_onehot = self.one_hot(label_downsample, patch.dtype)
 
-        # Run through adversary
-        adv_real = self.adversary.forward(patch, label_onehot)
-        real_labels = self.adversary.real_label(batch_size, adv_real.dtype, self.device)
-        real_loss = self.adversary.loss(adv_real, real_labels)
-
-        # Training Segmenter
-        gan_epoch = self.hparams["gan_epoch"]
-        if (self.global_step % (2 * gan_epoch)) > gan_epoch:
-            loss = self.segmenter.loss(gan_out, label_downsample) + real_loss
-            dsc = util.dice(gan_out, label_downsample).mean()
-            self.log_dict(
-                {"gen_loss": loss, "train_dice": dsc},
-                prog_bar=True,
-                on_step=True,
-            )
-
-            # Update Segmenter's Weights
-            self.manual_backward(loss)
-            seg_opt.step()
-
-        # Training Adversary
-        else:
-            # Compute Fake Loss -> Loss
-            adv_fake = self.adversary.forward(patch, gen_segment)
-            fake_labels = self.adversary.fake_label(
-                batch_size, adv_fake.dtype, self.device
-            )
-            fake_loss = self.adversary.loss(adv_fake, fake_labels)
-            loss = (real_loss + fake_loss) / 2
-            self.log_dict(
-                {"adv_loss": loss},
-                prog_bar=True,
-                on_step=True,
-            )
-            # Train Adversary
-            self.manual_backward(loss)
-            adv_opt.step()
+        loss = self.segmenter.loss(gan_out, label_downsample)
+        self.log("gen_loss", loss)
 
         return loss
 
