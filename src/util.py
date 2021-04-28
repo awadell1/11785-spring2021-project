@@ -22,7 +22,7 @@ class ModelArtifact(ModelCheckpoint):
 
 
 class NNModule(pl.LightningModule):
-    """ NN Module with some extra spice """
+    """NN Module with some extra spice"""
 
     input_size = None  # Expected Input size for the model
 
@@ -60,7 +60,7 @@ def fetch_model(Net, args):
     s3 = boto3.client("s3")
     ckpt = f"runs/{args.resume_from_checkpoint}/checkpoint.ckpt"
     Path(ckpt).parent.mkdir(exist_ok=True, parents=True)
-    s3.download_file("11785-spring2021-hw3p2", ckpt, ckpt)
+    s3.download_file("11785-spring2021-project", ckpt, ckpt)
     return Net.load_from_checkpoint(ckpt, **vars(args))
 
 
