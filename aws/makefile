@@ -17,9 +17,11 @@ sweep-cmd:
 	[ ! -z "$(SWEEP_CMD)" ] || exit 1
 
 .PHONY:
+
+mkswap: SWAP_COUNT ?= 128
 mkswap:
 	set -e
-	sudo dd if=/dev/zero of=/swapfile bs=128M count=128
+	sudo dd if=/dev/zero of=/swapfile bs=128M count=$(SWAP_COUNT)
 	sudo chmod 600 /swapfile
 	sudo mkswap /swapfile
 	sudo swapon /swapfile
