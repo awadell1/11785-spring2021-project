@@ -55,6 +55,7 @@ class LiBrainTumorSegGan(util.NNModule):
 
         # Overall
         parser.add_argument("--gan_epoch", type=int, default=500)
+        parser.add_argument("--no_adversary", action="store_true")
 
         return parser
 
@@ -68,6 +69,7 @@ class LiBrainTumorSegGan(util.NNModule):
 
         # Adversary
         self.adversary = LiBrainTumorSegAdv()
+        self.use_adversary = not self.hparams["no_adversary"]
 
         # Get Dice Loss for each Class
         dice_losses = dict()
@@ -116,8 +118,10 @@ class LiBrainTumorSegGan(util.NNModule):
 
         # Training Segmenter
         gan_epoch = self.hparams["gan_epoch"]
-        if (self.global_step % (2 * gan_epoch)) > gan_epoch:
-            loss = self.segmenter.loss(gan_out, label_downsample) + real_loss
+        if (self.global_step % (2 * gan_epoch)) > gan_epoch or not self.use_adversary:
+            loss = self.segmenter.loss(gan_out, label_downsample)
+            if self.use_adversary:
+                loss += real_loss
             log_dict = {"gen_loss": loss}
 
             # Log dice losses
