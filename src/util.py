@@ -5,6 +5,7 @@ from torch import nn
 import pytorch_lightning as pl
 import boto3
 from git import Repo
+from matplotlib import pyplot as plt
 
 
 class NNModule(pl.LightningModule):
@@ -69,3 +70,41 @@ class SparseDiceLoss(nn.Module):
         intersect = torch.sum(y_ref_mask * y_pred_mask, dim=sum_dim)
         union = torch.sum(y_ref_mask + y_pred_mask, dim=sum_dim)
         return torch.mean(2 * intersect / union)
+
+
+def plot_model(data, label, predict):
+    """
+    Plot Model's Predictions with expert labeling and input scans
+    """
+
+    # Detach from torch
+    data = data.detach().numpy()
+    label = label.detach().numpy()
+    predict = predict.detach().numpy()
+
+    fig = plt.figure(constrained_layout=True)
+    ticks = {
+        "axis": "both",
+        "bottom": False,
+        "labelbottom": False,
+        "left": False,
+        "labelleft": False,
+    }
+
+    # Plot input MRI scans
+    for idx in range(4):
+        ax = fig.add_subplot(2, 3, idx + 1)
+        ax.imshow(data[idx], cmap="gray")
+        ax.tick_params(**ticks)
+
+    # Plot Ground Truth
+    ax = fig.add_subplot(2, 3, 5)
+    ax.imshow(label, cmap="Paired")
+    ax.tick_params(**ticks)
+
+    # Plot Model's Predictions
+    ax = fig.add_subplot(2, 3, 6)
+    ax.imshow(predict, cmap="Paired")
+    ax.tick_params(**ticks)
+
+    return fig

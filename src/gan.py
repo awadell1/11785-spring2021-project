@@ -116,6 +116,11 @@ class LiBrainTumorSegGan(util.NNModule):
         real_labels = self.adversary.real_label(batch_size, adv_real.dtype, self.device)
         real_loss = self.adversary.loss(adv_real, real_labels)
 
+        # Plot results once an epoch
+        if batch_idx == 0:
+            fig = util.plot_model(patch[0], label[0], gan_out[0].argmax(dim=0))
+            self.logger.experiment.log({"train_predictions": fig})
+
         # Training Segmenter
         gan_epoch = self.hparams["gan_epoch"]
         if (self.global_step % (2 * gan_epoch)) > gan_epoch or not self.use_adversary:
