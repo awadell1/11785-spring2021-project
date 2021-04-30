@@ -78,9 +78,9 @@ def plot_model(data, label, predict):
     """
 
     # Detach from torch
-    data = data.detach().numpy()
-    label = label.detach().numpy()
-    predict = predict.detach().numpy()
+    data = data.detach().cpu().numpy()
+    label = label.detach().cpu().numpy()
+    predict = predict.detach().cpu().numpy()
 
     fig = plt.figure(constrained_layout=True)
     ticks = {
