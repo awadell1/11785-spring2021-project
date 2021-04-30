@@ -18,7 +18,8 @@ sweep-cmd:
 
 .PHONY:
 
-mkswap: SWAP_COUNT ?= 128
+# Increase swap space to ~40 GB
+mkswap: SWAP_COUNT ?= 312
 mkswap:
 	set -e
 	sudo dd if=/dev/zero of=/swapfile bs=128M count=$(SWAP_COUNT) status=progress
