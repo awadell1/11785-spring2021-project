@@ -1,24 +1,10 @@
 import argparse
 from pathlib import Path
-from torch import tensor
-import wandb
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint
+from torch import nn
 import pytorch_lightning as pl
 import boto3
 from git import Repo
-
-
-class ModelArtifact(ModelCheckpoint):
-    def _save_model(self, filepath: str, trainer, pl_module):
-        super()._save_model(filepath, trainer, pl_module)
-
-        # Log artifact at most once
-        run = trainer.logger.experiment
-        artifact = wandb.Artifact(run.id, type="checkpoint")
-        if not artifact.logged_by():
-            artifact.add_reference(filepath, checksum=False)
-            run.log_artifact(artifact)
 
 
 class NNModule(pl.LightningModule):
@@ -64,8 +50,22 @@ def fetch_model(Net, project, args):
     return Net.load_from_checkpoint(ckpt, **vars(args))
 
 
-def dice(y: torch.Tensor, y_hat: torch.Tensor):
-    y_cls = torch.argmax(y, dim=1)
-    intersect = torch.sum(y_cls * y_hat, dim=[1, 2])
-    union = y_hat[0].numel() + y_cls[0].numel()
-    return 2 * intersect / union
+class SparseDiceLoss(nn.Module):
+    def __init__(self, cls_id) -> None:
+        super().__init__()
+        self.cls_id = cls_id
+
+    def forward(self, y_pred, y_ref):
+        """Compute Dice Loss using:
+        y_pred - One-Hot Encoding of Segmentation from Model
+        y_ref - Categorical Encoding of Reference Segmentation
+        """
+        # Mask the reference to just the target class
+        y_ref_mask = y_ref == self.cls_id
+        y_pred_mask = y_pred[:, self.cls_id]
+
+        # Sum over all but batch dimension
+        sum_dim = list(range(1, len(y_pred.shape) - 1))
+        intersect = torch.sum(y_ref_mask * y_pred_mask, dim=sum_dim)
+        union = torch.sum(y_ref_mask + y_pred_mask, dim=sum_dim)
+        return torch.mean(2 * intersect / union)
