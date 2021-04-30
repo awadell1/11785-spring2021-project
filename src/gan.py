@@ -134,11 +134,9 @@ class LiBrainTumorSegGan(util.NNModule):
         else:
             # Compute Fake Loss -> Loss
             adv_fake = self.adversary.forward(patch, gen_segment)
-            print(f"adv_fake shape: {adv_fake.shape}")
             fake_labels = self.adversary.fake_label(
                 adv_fake.shape[0], adv_fake.dtype, self.device
             )
-            print(f"fake_labels shape: {fake_labels.shape}")
             fake_loss = self.adversary.loss(adv_fake, fake_labels)
             loss = (real_loss + fake_loss) / 2
             self.log_dict(
@@ -291,7 +289,6 @@ class LiBrainTumorSegAdv(nn.Module):
 
         """Return the real_labels size"""
         if label is None or batch_size != label.shape[0]:
-            print("new label")
             return torch.full(
                 (batch_size, 15, 15),
                 fill_value,
@@ -300,7 +297,6 @@ class LiBrainTumorSegAdv(nn.Module):
                 device=device,
             )
         else:
-            print("old label")
             return label
 
 
