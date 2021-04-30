@@ -69,6 +69,14 @@ class LiBrainTumorSegGan(util.NNModule):
         # Adversary
         self.adversary = LiBrainTumorSegAdv()
 
+        # Get Dice Loss for each Class
+        dice_losses = dict()
+        for cls_id, cls_name in enumerate(
+            ["empty", "brain", "edema", "nonenhance", "enhance"]
+        ):
+            dice_losses[cls_name] = util.SparseDiceLoss(cls_id)
+        self.dice_losses = dice_losses
+
         # Enable Manual Optimization
         self.automatic_optimization = False
 
@@ -110,12 +118,13 @@ class LiBrainTumorSegGan(util.NNModule):
         gan_epoch = self.hparams["gan_epoch"]
         if (self.global_step % (2 * gan_epoch)) > gan_epoch:
             loss = self.segmenter.loss(gan_out, label_downsample) + real_loss
-            dsc = util.dice(gan_out, label_downsample).mean()
-            self.log_dict(
-                {"gen_loss": loss, "train_dice": dsc},
-                prog_bar=True,
-                on_step=True,
-            )
+            log_dict = {"gen_loss": loss}
+
+            # Log dice losses
+            for cls_name, cls_dsc in self.dice_losses.items():
+                log_dict[f"train_{cls_name}_dsc"] = cls_dsc(gan_out, label_downsample)
+
+            self.log_dict(log_dict)
 
             # Update Segmenter's Weights
             self.manual_backward(loss)
@@ -125,9 +134,11 @@ class LiBrainTumorSegGan(util.NNModule):
         else:
             # Compute Fake Loss -> Loss
             adv_fake = self.adversary.forward(patch, gen_segment)
+            print(f"adv_fake shape: {adv_fake.shape}")
             fake_labels = self.adversary.fake_label(
-                batch_size, adv_fake.dtype, self.device
+                adv_fake.shape[0], adv_fake.dtype, self.device
             )
+            print(f"fake_labels shape: {fake_labels.shape}")
             fake_loss = self.adversary.loss(adv_fake, fake_labels)
             loss = (real_loss + fake_loss) / 2
             self.log_dict(
@@ -145,12 +156,14 @@ class LiBrainTumorSegGan(util.NNModule):
         # Compute Segmentation Loss
         patch, label = batch
         x, _ = self.segmenter(patch)
-        return util.dice(x, label[:, 1::2, 1::2])
 
-    def validation_epoch_end(self, outputs: List[torch.Tensor]) -> None:
-        avg_dice = torch.stack(outputs).mean()
-        self.log_dict({"val_dice": avg_dice})
-        return super().validation_epoch_end(outputs)
+        # Log dice losses
+        log_dict = dict()
+        label_downsample = label[:, 1::2, 1::2]
+        for cls_name, cls_dsc in self.dice_losses.items():
+            log_dict[f"val_{cls_name}_dsc"] = cls_dsc(x, label_downsample)
+
+        self.log_dict(log_dict)
 
     def configure_optimizers(self):
 
@@ -250,7 +263,6 @@ class LiBrainTumorSegAdv(nn.Module):
         self.loss = nn.BCEWithLogitsLoss()
 
         # Placeholders for real/fake labels
-        self._batch_size = None
         self._fake_label = None
         self._real_label = None
 
@@ -264,14 +276,12 @@ class LiBrainTumorSegAdv(nn.Module):
     def real_label(self, batch_size, dtype, device):
         """Return a real label for use in training"""
         label = self._get_label(self._real_label, 1, batch_size, dtype, device)
-        self._batch_size = batch_size
         self._real_label = label
         return label
 
     def fake_label(self, batch_size, dtype, device):
         """Return a fake label for use in training"""
         label = self._get_label(self._fake_label, 0, batch_size, dtype, device)
-        self._batch_size = batch_size
         self._fake_label = label
         return label
 
@@ -280,7 +290,8 @@ class LiBrainTumorSegAdv(nn.Module):
     ) -> torch.Tensor:
 
         """Return the real_labels size"""
-        if label is None or batch_size != self._batch_size:
+        if label is None or batch_size != label.shape[0]:
+            print("new label")
             return torch.full(
                 (batch_size, 15, 15),
                 fill_value,
@@ -289,6 +300,7 @@ class LiBrainTumorSegAdv(nn.Module):
                 device=device,
             )
         else:
+            print("old label")
             return label
 
 
@@ -328,7 +340,7 @@ def train(args):
             ModelCheckpoint(
                 dirpath=f"s3://11785-spring2021-project/{wandb_logger.experiment.project}/runs/{wandb_logger.experiment.id}",
                 filename="checkpoint",
-                monitor="val_dice",
+                monitor="val_edema_dsc",
                 mode="max",
                 save_top_k=1,
                 verbose=True,
@@ -359,17 +371,20 @@ def train(args):
         "patch_depth": 1,
         "n_samples": args.limit_patients,
     }
+    train_ds = Brats2017(train_ds, **dl_args)
+    val_ds = Brats2017(val_ds, **dl_args)
     train_dl = DataLoader(
-        Brats2017(train_ds, **dl_args),
+        train_ds,
         batch_size=args.batch_size,
         pin_memory=True,
-        shuffle=True,
+        sampler=Brats2017.train_sampler(train_ds),
         num_workers=cpu_count() if torch.has_cuda else 0,
     )
     val_dl = DataLoader(
-        Brats2017(val_ds, **dl_args),
+        val_ds,
         batch_size=32,
         pin_memory=True,
+        sampler=Brats2017.test_sampler(val_ds),
         num_workers=cpu_count() if torch.has_cuda else 0,
     )
 
