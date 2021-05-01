@@ -270,8 +270,8 @@ class LiBrainTumorSegAdv(nn.Module):
             nn.ReLU(),
             nn.Conv2d(512, 1, kernel_size=3, padding=0),
             nn.ReLU(),
+            nn.Flatten(0),
         )
-
         self.loss = nn.BCEWithLogitsLoss()
 
         # Placeholders for real/fake labels
@@ -295,7 +295,7 @@ class LiBrainTumorSegAdv(nn.Module):
         patch_feat = self.mri_features(mri_patch)
         seg_feat = self.seg_features(mri_segment)
         x = torch.cat((patch_feat, seg_feat), dim=1)
-        return self.discriminator(x).flatten()
+        return self.discriminator(x)
 
     def real_label(self, batch_size, dtype, device):
         """Return a real label for use in training"""
