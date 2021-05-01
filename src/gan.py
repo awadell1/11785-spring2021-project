@@ -153,9 +153,11 @@ class LiBrainTumorSegGan(util.NNModule):
             self.log("train_adv_loss", loss)
 
             # Adversary Accuracy
+            real_correct = (adv_real.argmax(dim=1) == 1).sum()
+            fake_correct = (adv_fake.argmax(dim=1) == 0).sum()
             self.log(
                 "train_adv_accuracy",
-                ((adv_real > 0).sum() + (adv_fake < 0).sum()) / (2 * batch_size),
+                (real_correct + fake_correct) / (2 * batch_size),
             )
 
             # Update Adversary's Weights
@@ -268,11 +270,11 @@ class LiBrainTumorSegAdv(nn.Module):
             nn.LeakyReLU(),
             nn.Conv2d(256, 512, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(512, 1, kernel_size=3, padding=0),
+            nn.Conv2d(512, 2, kernel_size=3, padding=0),
             nn.ReLU(),
         )
 
-        self.loss = nn.BCEWithLogitsLoss()
+        self.loss = nn.CrossEntropyLoss()
 
         # Placeholders for real/fake labels
         self._fake_label = None
@@ -295,7 +297,7 @@ class LiBrainTumorSegAdv(nn.Module):
         patch_feat = self.mri_features(mri_patch)
         seg_feat = self.seg_features(mri_segment)
         x = torch.cat((patch_feat, seg_feat), dim=1)
-        return self.discriminator(x).flatten()
+        return self.discriminator(x).flatten(1)
 
     def real_label(self, batch_size, dtype, device):
         """Return a real label for use in training"""
@@ -319,7 +321,7 @@ class LiBrainTumorSegAdv(nn.Module):
                 (batch_size,),
                 fill_value,
                 requires_grad=False,
-                dtype=dtype,
+                dtype=torch.long,
                 device=device,
             )
         else:
