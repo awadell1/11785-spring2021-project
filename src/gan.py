@@ -108,18 +108,20 @@ class LiBrainTumorSegGan(util.NNModule):
             fig = util.plot_model(patch[0], label[0], gan_out[0].argmax(dim=0))
             self.logger.experiment.log({"train_predictions": fig})
 
-        # Downsample label from 31x31 -> 15x15 and convert to one_hot encoding
+        # Downsample label from 31x31 -> 15x15
         label_downsample = label[:, 1::2, 1::2]
-
-        # Run Prediction through Adversary
-        adv_fake = self.adversary.forward(patch, gen_segment)
-        real_labels = self.adversary.real_label(batch_size, adv_fake.dtype, self.device)
 
         # Training Segmenter
         gan_epoch = self.hparams["gan_epoch"]
         if (self.global_step % (2 * gan_epoch)) > gan_epoch or not self.use_adversary:
             loss = self.segmenter.loss(gan_out, label_downsample)
             if self.use_adversary:
+                # Run Prediction through Adversary
+                adv_fake = self.adversary.forward(patch, gen_segment)
+                real_labels = self.adversary.real_label(
+                    batch_size, adv_fake.dtype, self.device
+                )
+
                 # Did we trick the adversary
                 adv_tricked_loss = self.adversary.loss(adv_fake, real_labels)
                 self.log("adv_tricked_loss", adv_tricked_loss)
@@ -136,6 +138,7 @@ class LiBrainTumorSegGan(util.NNModule):
         # Training Adversary
         else:
             # Loss for Classifying Segmenter as Real
+            adv_fake = self.adversary.forward(patch, gen_segment.detach())
             fake_labels = self.adversary.fake_label(
                 batch_size, adv_fake.dtype, self.device
             )
@@ -144,6 +147,9 @@ class LiBrainTumorSegGan(util.NNModule):
 
             # Loss for Classifying Expert as Fake
             label_onehot = self.one_hot(label_downsample, patch.dtype)
+            real_labels = self.adversary.real_label(
+                batch_size, adv_fake.dtype, self.device
+            )
             adv_real = self.adversary.forward(patch, label_onehot)
             adv_real_loss = self.adversary.loss(adv_real, real_labels)
             self.log("adv_real_loss", adv_real_loss)
