@@ -182,7 +182,7 @@ class LiBrainTumorSegGan(util.NNModule):
 
         # Configure Adversary Optimizer
         opt_adv = Adam(
-            self.segmenter.parameters(),
+            self.adversary.parameters(),
             lr=self.hparams["adv_lr"],
             betas=(self.hparams["adv_beta1"], self.hparams["adv_beta2"]),
         )
