@@ -1,16 +1,15 @@
 
 # Train the model using an Spot Instance
-spot-train-%: src/%.py conda.install ${TRAIN_FILES}
-	$(CONDA_ACTIVATE)
-	./aws/spot_watcher.sh python -m src.$* $(ARGS)
-	$(S3_PUSH_RUNS)
+spot-train-%: aws-train-%
 	sudo shutdown -h now
 
-spot-train-sweep: sweep-cmd conda.install ${TRAIN_FILES}
+aws-train-%: src/%.py conda.install ${TRAIN_FILES} mkswap
 	$(CONDA_ACTIVATE)
-	./spot_watcher.sh $(SWEEP_CMD)
-	$(S3_PUSH_RUNS)
-	sudo shutdown -h now
+	python -m src.$* $(ARGS)
+
+spot-train-sweep: sweep-cmd conda.install ${TRAIN_FILES} mkswap
+	$(CONDA_ACTIVATE)
+	$(SWEEP_CMD)
 
 .PHONY: sweep-cmd
 sweep-cmd:
