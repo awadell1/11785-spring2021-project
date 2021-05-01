@@ -281,8 +281,8 @@ class LiBrainTumorSegAdv(nn.Module):
                     nonlinearity="leaky_relu",
                 )
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+                nn.init.normal_(m.weight.data, 1.0, 0.02)
+                nn.init.constant_(m.bias.data, 0)
 
     def forward(self, mri_patch, mri_segment):
         # Predicts 1 iff mri_segment is real
@@ -335,7 +335,6 @@ class CNNBlock(nn.Module):
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
