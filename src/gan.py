@@ -272,6 +272,18 @@ class LiBrainTumorSegAdv(nn.Module):
         self._fake_label = None
         self._real_label = None
 
+        # Init Weights
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(
+                    m.weight,
+                    mode="fan_out",
+                    nonlinearity="leaky_relu",
+                )
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
     def forward(self, mri_patch, mri_segment):
         # Predicts 1 iff mri_segment is real
         patch_feat = self.mri_features(mri_patch)
