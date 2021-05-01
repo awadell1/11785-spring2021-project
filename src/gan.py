@@ -56,6 +56,7 @@ class LiBrainTumorSegGan(util.NNModule):
         # Overall
         parser.add_argument("--gan_epoch", type=int, default=500)
         parser.add_argument("--no_adversary", action="store_true")
+        parser.add_argument("--adversary_weight", type=float, default=1.0)
 
         return parser
 
@@ -122,7 +123,7 @@ class LiBrainTumorSegGan(util.NNModule):
                 # Did we trick the adversary
                 adv_tricked_loss = self.adversary.loss(adv_fake, real_labels)
                 self.log("adv_tricked_loss", adv_tricked_loss)
-                loss += adv_tricked_loss
+                loss += adv_tricked_loss * self.hparams["adversary_weight"]
 
             # Log dice losses
             self.log("train_dice", self.dice(gen_segment, label_downsample))
@@ -145,7 +146,7 @@ class LiBrainTumorSegGan(util.NNModule):
             label_onehot = self.one_hot(label_downsample, patch.dtype)
             adv_real = self.adversary.forward(patch, label_onehot)
             adv_real_loss = self.adversary.loss(adv_real, real_labels)
-            self.log("adv_fake_loss", adv_real_loss)
+            self.log("adv_real_loss", adv_real_loss)
 
             # Adversary Loss
             loss = (adv_real_loss + adv_fake_loss) / 2
@@ -255,13 +256,13 @@ class LiBrainTumorSegAdv(nn.Module):
         )
 
         self.discriminator = nn.Sequential(
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=0),
             nn.LeakyReLU(),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=0),
             nn.LeakyReLU(),
             nn.Conv2d(256, 512, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(512, 1, kernel_size=3, padding=1),
+            nn.Conv2d(512, 1, kernel_size=3, padding=0),
             nn.ReLU(),
         )
 
@@ -276,7 +277,7 @@ class LiBrainTumorSegAdv(nn.Module):
         patch_feat = self.mri_features(mri_patch)
         seg_feat = self.seg_features(mri_segment)
         x = torch.cat((patch_feat, seg_feat), dim=1)
-        return self.discriminator(x).squeeze(1)
+        return self.discriminator(x).flatten()
 
     def real_label(self, batch_size, dtype, device):
         """Return a real label for use in training"""
@@ -297,7 +298,7 @@ class LiBrainTumorSegAdv(nn.Module):
         """Return the real_labels size"""
         if label is None or batch_size != label.shape[0]:
             return torch.full(
-                (batch_size, 15, 15),
+                (batch_size,),
                 fill_value,
                 requires_grad=False,
                 dtype=dtype,

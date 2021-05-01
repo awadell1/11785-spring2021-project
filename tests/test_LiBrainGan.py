@@ -21,11 +21,11 @@ def test_segmentor():
 
 def test_adversary():
     adv = LiBrainTumorSegAdv()
-    mri_patch = torch.rand((1, 4, 31, 31))
-    labels = torch.rand((1, 5, 15, 15))
+    mri_patch = torch.rand((3, 4, 31, 31))
+    labels = torch.rand((3, 5, 15, 15))
 
     out = adv(mri_patch, labels)
-    assert list(out.shape) == [1, 15, 15]
+    assert list(out.shape) == [3]
 
 
 def test_dice():
