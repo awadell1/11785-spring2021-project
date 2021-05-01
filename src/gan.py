@@ -152,6 +152,12 @@ class LiBrainTumorSegGan(util.NNModule):
             loss = (adv_real_loss + adv_fake_loss) / 2
             self.log("train_adv_loss", loss)
 
+            # Adversary Accuracy
+            self.log(
+                "train_adv_accuracy",
+                ((adv_real > 0).sum() + (adv_fake < 0).sum()) / (2 * batch_size),
+            )
+
             # Update Adversary's Weights
             self.manual_backward(loss)
             adv_opt.step()
