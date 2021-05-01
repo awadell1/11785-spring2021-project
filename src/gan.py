@@ -128,6 +128,7 @@ class LiBrainTumorSegGan(util.NNModule):
             self.log("train_dice", self.dice(gen_segment, label_downsample))
 
             # Update Segmenter's Weights
+            self.log("train_seg_loss", loss)
             self.manual_backward(loss)
             seg_opt.step()
 
