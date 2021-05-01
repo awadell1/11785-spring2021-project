@@ -6,6 +6,7 @@ from src.util import SparseDiceLoss
 
 def test_segmentor():
     seg = LiBrainTumorSegGen()
+    torch.random.manual_seed(0)
     input = torch.rand((1, 4, 31, 31), requires_grad=False)
     out, logits = seg(input)
 
@@ -30,11 +31,13 @@ def test_segmentor():
 
 def test_adversary():
     adv = LiBrainTumorSegAdv()
+    torch.random.manual_seed(0)
     mri_patch = torch.rand((3, 4, 31, 31), requires_grad=True)
-    labels = torch.rand((3, 5, 15, 15), requires_grad=False)
+    labels = torch.rand((3, 5, 15, 15)).softmax(1)
+    labels.requires_grad_(True)
 
     out = adv(mri_patch, labels)
-    adv_label = torch.tensor([0.0, 0.0, 0.0], requires_grad=False)
+    adv_label = torch.tensor([0.0, 1.0, 0.0])
     loss = adv.loss(out, adv_label)
     assert list(out.shape) == [3]
 
@@ -43,8 +46,9 @@ def test_adversary():
     total_norm = 0
     for p in adv.parameters():
         total_norm += p.grad.norm() ** 2
-    assert total_norm.sqrt() > 0.1
-    assert mri_patch.grad.norm() > 0.1
+    assert total_norm.sqrt() > 0.0
+    assert mri_patch.grad.norm() > 0.0
+    assert labels.grad.norm() > 0.0
 
 
 def test_dice():
