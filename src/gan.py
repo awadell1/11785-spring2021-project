@@ -72,12 +72,7 @@ class LiBrainTumorSegGan(util.NNModule):
         self.use_adversary = not self.hparams["no_adversary"]
 
         # Get Dice Loss for each Class
-        dice_losses = dict()
-        for cls_id, cls_name in enumerate(
-            ["empty", "brain", "edema", "nonenhance", "enhance"]
-        ):
-            dice_losses[cls_name] = util.SparseDiceLoss(cls_id)
-        self.dice_losses = dice_losses
+        self.dice = util.SparseDiceLoss(input_type="log_softmax")
 
         # Enable Manual Optimization
         self.automatic_optimization = False
@@ -107,33 +102,30 @@ class LiBrainTumorSegGan(util.NNModule):
         # Run through segmenter
         gan_out, gen_segment = self.segmenter(patch)
 
-        # Downsample label from 31x31 -> 15x15 and convert to one_hot encoding
-        label_downsample = label[:, 1::2, 1::2]
-        label_onehot = self.one_hot(label_downsample, patch.dtype)
-
-        # Run through adversary
-        adv_real = self.adversary.forward(patch, label_onehot)
-        real_labels = self.adversary.real_label(batch_size, adv_real.dtype, self.device)
-        real_loss = self.adversary.loss(adv_real, real_labels)
-
         # Plot results once an epoch
         if batch_idx == 0:
             fig = util.plot_model(patch[0], label[0], gan_out[0].argmax(dim=0))
             self.logger.experiment.log({"train_predictions": fig})
+
+        # Downsample label from 31x31 -> 15x15 and convert to one_hot encoding
+        label_downsample = label[:, 1::2, 1::2]
+
+        # Run Prediction through Adversary
+        adv_fake = self.adversary.forward(patch, gen_segment)
+        real_labels = self.adversary.real_label(batch_size, adv_fake.dtype, self.device)
 
         # Training Segmenter
         gan_epoch = self.hparams["gan_epoch"]
         if (self.global_step % (2 * gan_epoch)) > gan_epoch or not self.use_adversary:
             loss = self.segmenter.loss(gan_out, label_downsample)
             if self.use_adversary:
-                loss += real_loss
-            log_dict = {"gen_loss": loss}
+                # Did we trick the adversary
+                adv_tricked_loss = self.adversary.loss(adv_fake, real_labels)
+                self.log("adv_tricked_loss", adv_tricked_loss)
+                loss += adv_tricked_loss
 
             # Log dice losses
-            for cls_name, cls_dsc in self.dice_losses.items():
-                log_dict[f"train_{cls_name}_dsc"] = cls_dsc(gan_out, label_downsample)
-
-            self.log_dict(log_dict)
+            self.log("train_dice", self.dice(gen_segment, label_downsample))
 
             # Update Segmenter's Weights
             self.manual_backward(loss)
@@ -141,19 +133,24 @@ class LiBrainTumorSegGan(util.NNModule):
 
         # Training Adversary
         else:
-            # Compute Fake Loss -> Loss
-            adv_fake = self.adversary.forward(patch, gen_segment)
+            # Loss for Classifying Segmenter as Real
             fake_labels = self.adversary.fake_label(
-                adv_fake.shape[0], adv_fake.dtype, self.device
+                batch_size, adv_fake.dtype, self.device
             )
-            fake_loss = self.adversary.loss(adv_fake, fake_labels)
-            loss = (real_loss + fake_loss) / 2
-            self.log_dict(
-                {"adv_loss": loss},
-                prog_bar=True,
-                on_step=True,
-            )
-            # Train Adversary
+            adv_fake_loss = self.adversary.loss(adv_fake, fake_labels)
+            self.log("adv_fake_loss", adv_fake_loss)
+
+            # Loss for Classifying Expert as Fake
+            label_onehot = self.one_hot(label_downsample, patch.dtype)
+            adv_real = self.adversary.forward(patch, label_onehot)
+            adv_real_loss = self.adversary.loss(adv_real, real_labels)
+            self.log("adv_fake_loss", adv_real_loss)
+
+            # Adversary Loss
+            loss = (adv_real_loss + adv_fake_loss) / 2
+            self.log("train_adv_loss", loss)
+
+            # Update Adversary's Weights
             self.manual_backward(loss)
             adv_opt.step()
 
@@ -162,15 +159,15 @@ class LiBrainTumorSegGan(util.NNModule):
     def validation_step(self, batch, batch_idx):
         # Compute Segmentation Loss
         patch, label = batch
-        x, _ = self.segmenter(patch)
+        x, logits = self.segmenter(patch)
+
+        # Plot results once an epoch
+        if batch_idx == 0:
+            fig = util.plot_model(patch[0], label[0], x[0].argmax(dim=0))
+            self.logger.experiment.log({"val_predictions": fig})
 
         # Log dice losses
-        log_dict = dict()
-        label_downsample = label[:, 1::2, 1::2]
-        for cls_name, cls_dsc in self.dice_losses.items():
-            log_dict[f"val_{cls_name}_dsc"] = cls_dsc(x, label_downsample)
-
-        self.log_dict(log_dict)
+        self.log("val_dice", self.dice(logits, label[:, 1::2, 1::2]))
 
     def configure_optimizers(self):
 
@@ -345,7 +342,7 @@ def train(args):
             ModelCheckpoint(
                 dirpath=f"s3://11785-spring2021-project/{wandb_logger.experiment.project}/runs/{wandb_logger.experiment.id}",
                 filename="checkpoint",
-                monitor="val_edema_dsc",
+                monitor="val_dice",
                 mode="max",
                 save_top_k=1,
                 verbose=True,

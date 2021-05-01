@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from git.refs import log
 import torch
 from torch import nn
 import pytorch_lightning as pl
@@ -52,24 +53,34 @@ def fetch_model(Net, project, args):
 
 
 class SparseDiceLoss(nn.Module):
-    def __init__(self, cls_id) -> None:
+    def __init__(self, input_type="raw", epsilon=1e-6) -> None:
         super().__init__()
-        self.cls_id = cls_id
+        self.input_type = input_type
+        self.epsilon = epsilon
 
     def forward(self, y_pred, y_ref):
         """Compute Dice Loss using:
         y_pred - One-Hot Encoding of Segmentation from Model
         y_ref - Categorical Encoding of Reference Segmentation
         """
-        # Mask the reference to just the target class
-        y_ref_mask = y_ref == self.cls_id
-        y_pred_mask = y_pred[:, self.cls_id]
 
-        # Sum over all but batch dimension
-        sum_dim = list(range(1, len(y_pred.shape) - 1))
-        intersect = torch.sum(y_ref_mask * y_pred_mask, dim=sum_dim)
-        union = torch.sum(y_ref_mask + y_pred_mask, dim=sum_dim)
-        return torch.mean(2 * intersect / union)
+        # Convert y_pred to class proabilities
+        if self.input_type == "log_softmax":
+            logits = y_pred.exp()
+        else:
+            logits = y_pred.softmax(0)
+
+        # Compute intersection
+        intersect = 0
+        for cls_id in range(logits.shape[1]):
+            cls_intersect = logits[:, cls_id] * (y_ref == cls_id)
+            intersect += cls_intersect.flatten(1).sum(1)
+
+        # Compute Union
+        union = logits.flatten(1).sum(1) + y_ref.shape[1::].numel()
+
+        # Return Average Dice Loss
+        return torch.mean((2 * intersect + self.epsilon) / (union + self.epsilon))
 
 
 def plot_model(data, label, predict):
