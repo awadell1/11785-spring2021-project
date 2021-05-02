@@ -7,6 +7,7 @@ from typing import List
 # Import torch
 import torch
 import torch.nn as nn
+from torch.tensor import Tensor
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
@@ -75,9 +76,6 @@ class LiBrainTumorSegGan(util.NNModule):
         # Get Dice Loss for each Class
         self.dice = util.SparseDiceLoss(input_type="log_softmax")
 
-        # Enable Manual Optimization
-        self.automatic_optimization = False
-
     def forward(self, x):
         """Predict Segmentation from input patch"""
         return self.segmenter(x)
@@ -93,81 +91,57 @@ class LiBrainTumorSegGan(util.NNModule):
     def training_step(self, batch, batch_idx, optimizer_idx):
         """Train GAN on single batch"""
         patch, label = batch
-        batch_size = patch.shape[0]
-
-        # Zero out gradients
-        seg_opt, adv_opt = self.optimizers()
-        seg_opt.zero_grad()
-        adv_opt.zero_grad()
-
-        # Run through segmenter
-        gan_out, gen_segment = self.segmenter(patch)
-
-        # Plot results once an epoch
-        if batch_idx == 0:
-            fig = util.plot_model(patch[0], label[0], gan_out[0].argmax(dim=0))
-            self.logger.experiment.log({"train_predictions": fig})
-
-        # Downsample label from 31x31 -> 15x15
         label_downsample = label[:, 1::2, 1::2]
 
-        # Training Segmenter
-        gan_epoch = self.hparams["gan_epoch"]
-        if (self.global_step % (2 * gan_epoch)) > gan_epoch or not self.use_adversary:
-            loss = self.segmenter.loss(gan_out, label_downsample)
-            if self.use_adversary:
-                # Run Prediction through Adversary
-                adv_fake = self.adversary.forward(patch, gen_segment)
-                real_labels = self.adversary.real_label(
-                    batch_size, adv_fake.dtype, self.device
-                )
+        # Get loss
+        if optimizer_idx == 0:
+            loss, gan_out = self._seg_train(patch, label_downsample)
 
-                # Did we trick the adversary
-                adv_tricked_loss = self.adversary.loss(adv_fake, real_labels)
-                self.log("adv_tricked_loss", adv_tricked_loss)
-                loss += adv_tricked_loss * self.hparams["adversary_weight"]
+            # Plot results once an epoch
+            if batch_idx == 0:
+                fig = util.plot_model(patch[0], label[0], gan_out[0].argmax(dim=0))
+                self.logger.experiment.log({"train_predictions": fig})
+            return loss
 
-            # Log dice losses
-            self.log("train_dice", self.dice(gen_segment, label_downsample))
+        return self._adv_train(patch, label_downsample)
 
-            # Update Segmenter's Weights
-            self.log("train_seg_loss", loss)
-            self.manual_backward(loss)
-            seg_opt.step()
+    def _seg_train(self, patch, label_downsample):
+        # Run through segmenter
+        gan_out, gen_segment = self.segmenter(patch)
+        loss = self.segmenter.loss(gan_out, label_downsample)
 
-        # Training Adversary
-        else:
-            # Loss for Classifying Segmenter as Real
-            adv_fake = self.adversary.forward(patch, gen_segment.detach())
-            fake_labels = self.adversary.fake_label(
-                batch_size, adv_fake.dtype, self.device
-            )
-            adv_fake_loss = self.adversary.loss(adv_fake, fake_labels)
-            self.log("adv_fake_loss", adv_fake_loss)
+        # Log Dice Loss
+        self.log("train_dice", self.dice(gen_segment, label_downsample))
 
-            # Loss for Classifying Expert as Fake
-            label_onehot = self.one_hot(label_downsample, patch.dtype)
-            real_labels = self.adversary.real_label(
-                batch_size, adv_fake.dtype, self.device
-            )
-            adv_real = self.adversary.forward(patch, label_onehot)
-            adv_real_loss = self.adversary.loss(adv_real, real_labels)
-            self.log("adv_real_loss", adv_real_loss)
+        if self.use_adversary:
+            # Run Prediction through Adversary
+            adv_fake = self.adversary(patch, gen_segment)
+            real_labels = self.adversary.real_label(adv_fake)
+            adv_tricked_loss = self.adversary.loss(adv_fake, real_labels)
+            self.log("adv_tricked_loss", adv_tricked_loss)
+            loss += adv_tricked_loss * self.hparams["adversary_weight"]
 
-            # Adversary Loss
-            loss = (adv_real_loss + adv_fake_loss) / 2
-            self.log("train_adv_loss", loss)
+        self.log("train_seg_loss", loss)
+        return loss, gan_out
 
-            # Adversary Accuracy
-            self.log(
-                "train_adv_accuracy",
-                ((adv_real > 0).sum() + (adv_fake < 0).sum()) / (2 * batch_size),
-            )
+    def _adv_train(self, patch, label_downsample):
+        # Loss for Classifying Segmenter as Real
+        gen_segment = self.segmenter(patch)[1]
+        adv_fake = self.adversary(patch, gen_segment)
+        fake_labels = self.adversary.fake_label(adv_fake)
+        adv_fake_loss = self.adversary.loss(adv_fake, fake_labels)
+        self.log("adv_fake_loss", adv_fake_loss)
 
-            # Update Adversary's Weights
-            self.manual_backward(loss)
-            adv_opt.step()
+        # Loss for Classifying Expert as Fake
+        label_onehot = self.one_hot(label_downsample, patch.dtype)
+        adv_real = self.adversary(patch, label_onehot)
+        real_labels = self.adversary.real_label(adv_real)
+        adv_real_loss = self.adversary.loss(adv_real, real_labels)
+        self.log("adv_real_loss", adv_real_loss)
 
+        # Adversary Loss
+        loss = (adv_real_loss + adv_fake_loss) / 2
+        self.log("train_adv_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -303,30 +277,31 @@ class LiBrainTumorSegAdv(nn.Module):
         x = torch.cat((patch_feat, seg_feat), dim=1)
         return self.discriminator(x)
 
-    def real_label(self, batch_size, dtype, device):
+    def real_label(self, ref):
         """Return a real label for use in training"""
-        label = self._get_label(self._real_label, 1, batch_size, dtype, device)
+        label = self._get_label(self._real_label, ref, 1)
         self._real_label = label
         return label
 
-    def fake_label(self, batch_size, dtype, device):
+    def fake_label(self, ref):
         """Return a fake label for use in training"""
-        label = self._get_label(self._fake_label, 0, batch_size, dtype, device)
+        label = self._get_label(self._fake_label, ref, 0)
         self._fake_label = label
         return label
 
     def _get_label(
-        self, label: torch.Tensor, fill_value, batch_size, dtype, device
+        self, label: torch.Tensor, ref: torch.Tensor, fill_value
     ) -> torch.Tensor:
 
         """Return the real_labels size"""
+        batch_size = ref.shape[0]
         if label is None or batch_size != label.shape[0]:
             return torch.full(
                 (batch_size,),
                 fill_value,
                 requires_grad=False,
-                dtype=dtype,
-                device=device,
+                dtype=ref.dtype,
+                device=ref.device,
             )
         else:
             return label
