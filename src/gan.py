@@ -204,6 +204,60 @@ class LiBrainTumorSegGan(util.NNModule):
         return [opt_seg, opt_adv], [seg_sched, adv_sched]
 
 
+class CNNBlock(nn.Module):
+    def __init__(self, c_in, c_out, kernel=3, pad=None, stride=1):
+        super().__init__()
+        pad = int((kernel - 1) / 2) if pad is None else pad
+        self.layers = nn.Sequential(
+            nn.Conv2d(c_in, c_out, kernel_size=kernel, padding=pad, stride=stride),
+            nn.BatchNorm2d(c_out),
+            nn.ReLU(),
+        )
+
+        # Init Weights
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.normal_(m.weight.data, 1.0, 0.02)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        return self.layers(x)
+
+
+class ResBlock(nn.Module):
+    def __init__(self, c_in, c_out, kernel=3, downsample=1):
+        super().__init__()
+        pad = int((kernel - 1) / 2)
+        self.layers = nn.Sequential(
+            nn.Conv2d(c_in, c_out, kernel_size=kernel, padding=pad, stride=downsample),
+            nn.BatchNorm2d(c_out),
+            nn.ReLU(),
+            nn.Conv2d(c_out, c_out, kernel_size=kernel, padding=pad),
+            nn.BatchNorm2d(c_out),
+        )
+
+        if downsample == 1 and c_in == c_out:
+            self.skip = nn.Identity()
+        else:
+            self.skip = nn.Sequential(
+                nn.Conv2d(c_in, c_out, kernel_size=1, stride=downsample),
+                nn.BatchNorm2d(c_out),
+            )
+
+        # Init Weights
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return nn.functional.relu(self.layers(x) + self.skip(x))
+
+
 class LiBrainTumorSegGen(nn.Module):
     """
     Pytorch Implementation of Generative network from:
@@ -218,12 +272,11 @@ class LiBrainTumorSegGen(nn.Module):
 
         # Feature Extraction Layers
         self.layers = nn.Sequential(
-            CNNBlock(4, 64, kernel=3, pad=0),
-            *[CNNBlock(64, 64, kernel=3, pad=0) for _ in range(3)],
-            CNNBlock(64, 128, kernel=3, pad=0),
-            *[CNNBlock(128, 128, kernel=3, pad=0) for _ in range(3)],
+            CNNBlock(4, 64, kernel=3, pad=0, stride=2),
+            ResBlock(64, 128, kernel=3),
+            ResBlock(128, 256, kernel=3),
             nn.Dropout2d(dropout1),
-            CNNBlock(128, 256, kernel=1),
+            CNNBlock(256, 256, kernel=1),
             nn.Dropout2d(dropout2),
             nn.Conv2d(256, 5, kernel_size=1),
         )
@@ -330,28 +383,6 @@ class LiBrainTumorSegAdv(nn.Module):
             )
         else:
             return label
-
-
-class CNNBlock(nn.Module):
-    def __init__(self, c_in, c_out, kernel=3, pad=None):
-        super().__init__()
-        pad = int((kernel - 1) / 2) if pad is None else pad
-        self.layers = nn.Sequential(
-            nn.Conv2d(c_in, c_out, kernel_size=kernel, padding=pad),
-            nn.BatchNorm2d(c_out),
-            nn.ReLU(),
-        )
-
-        # Init Weights
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.normal_(m.weight.data, 1.0, 0.02)
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x):
-        return self.layers(x)
 
 
 def train(args):
