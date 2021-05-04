@@ -11,7 +11,7 @@ fi
 # Build Run Command
 read -r -d '' COMMAND << EOF
 # Run Make Recipe
-nohup make $@ > train.log &
+nohup make -j $@ > train.log &
 EOF
 
 # Create Runner
