@@ -31,10 +31,17 @@ class LiBrainTumorSegGan(util.NNModule):
     in Brainlesion: Glioma, Multiple Sclerosis, Stroke and Traumatic Brain Injuries,
     vol. 10670, A. Crimi, S. Bakas, H. Kuijf, B. Menze, and M. Reyes, Eds. Cham:
     Springer International Publishing, 2018, pp. 123–132.
+
+    Predicted Classes
+        Output Label                    Brats2017 Class
+        Label 0: Non-Tumor              Label 0
+        Label 1: Core Tumor Regions     Label 1
+        Label 2: Whole Tumor            Label 2
+        Label 3: Enhancing Tumor        Label 4
     """
 
     input_size = (4, 15, 15)  # (MRI, H, W)
-    output_size = (5, 15, 15)  # (Class, H, W)
+    output_size = (4, 15, 15)  # (Class, H, W)
 
     @classmethod
     def add_argparse_args(cls, parent=None):
@@ -55,7 +62,6 @@ class LiBrainTumorSegGan(util.NNModule):
         parser.add_argument("--adv_gamma", type=float, default=0.96)
 
         # Overall
-        parser.add_argument("--gan_epoch", type=int, default=500)
         parser.add_argument("--no_adversary", action="store_true")
         parser.add_argument("--adversary_weight", type=float, default=1.0)
 
@@ -91,6 +97,7 @@ class LiBrainTumorSegGan(util.NNModule):
     def training_step(self, batch, batch_idx, optimizer_idx):
         """Train GAN on single batch"""
         patch, label = batch
+        label[label == 4] = 3  # Remap Brats2017 Label 4 -> 3
         label_downsample = label[:, 1::2, 1::2]
 
         # Get loss
@@ -199,7 +206,7 @@ class LiBrainTumorSegGen(nn.Module):
             nn.Dropout2d(dropout1),
             CNNBlock(128, 256, kernel=1),
             nn.Dropout2d(dropout2),
-            nn.Conv2d(256, 5, kernel_size=1),
+            nn.Conv2d(256, 4, kernel_size=1),
         )
 
         # Loss and log logits
@@ -235,7 +242,7 @@ class LiBrainTumorSegAdv(nn.Module):
         )
 
         self.seg_features = nn.Sequential(
-            nn.Conv2d(5, 64, kernel_size=3, padding=1),
+            nn.Conv2d(4, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(),
@@ -339,6 +346,7 @@ def train(args):
         log_every_n_steps=5,
         flush_logs_every_n_steps=10,
         max_epochs=args.max_epochs,
+        gradient_clip_val=0.2,
         callbacks=[
             ModelCheckpoint(
                 dirpath=f"s3://11785-spring2021-project/{wandb_logger.experiment.project}/runs/{wandb_logger.experiment.id}",
