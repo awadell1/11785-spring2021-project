@@ -182,10 +182,10 @@ class Brats2017(Dataset):
         sample_score = torch.zeros((len(ds),))
         eps_score = 0.01 / len(ds)
         n_samples = 0
-        for idx, (_, label) in enumerate(ds):
-            if torch.all(label == 0):
+        for idx, (data, label) in enumerate(ds):
+            if torch.all(data == 0):
                 sample_score[idx] = empty_weight + eps_score
-            elif torch.any(label != 1):
+            elif torch.any(label != 0):
                 sample_score[idx] = tumor_weight + eps_score
                 n_samples += 1
             else:
