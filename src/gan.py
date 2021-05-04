@@ -154,6 +154,7 @@ class LiBrainTumorSegGan(util.NNModule):
     def validation_step(self, batch, batch_idx):
         # Compute Segmentation Loss
         patch, label = batch
+        label[label == 4] = 3  # Remap Brats2017 Label 4 -> 3
         x, logits = self.segmenter(patch)
 
         # Plot results once an epoch
