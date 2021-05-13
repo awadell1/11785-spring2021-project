@@ -22,7 +22,7 @@ class Brats2017(Dataset):
         super().__init__()
 
         # Parse Arguments
-        self.modality_postfix = ["flair", "t1", "t1ce", "t2"]
+        self.modality_postfix = ["FLAIR", "T1", "T1Gd", "T2"]
         self.label_postfix = "seg"
         self.direction = direction
         self.patch_shape = (patch_size, patch_size, patch_depth)
@@ -92,7 +92,8 @@ class Brats2017(Dataset):
         nii_volumes = []
         for mod in self.modality_postfix + [self.label_postfix]:
             # Get nii image
-            filename = patient_dir.joinpath(f"{patient_dir.name}_{mod}.nii.gz")
+            mod = mod if mod != "T1Gd" else "t1ce"
+            filename = patient_dir.joinpath(f"{patient_dir.name}_{mod.lower()}.nii.gz")
             nii_data = nib.load(filename)
 
             # Slice to patch
