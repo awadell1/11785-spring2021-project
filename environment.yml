@@ -3,13 +3,14 @@ channels:
   - pytorch
   - conda-forge
   - defaults
+  - anaconda
 dependencies:
   - python=3.7.10
   - pytorch=1.7.1
   - numpy=1.19
   - torchvision
-  - pytorch-lightning=1.2.3
-  - pip=21.0.1
+  - pip
+  - boto3
   - scikit-learn
   - wandb
   - pytest
@@ -18,7 +19,10 @@ dependencies:
   - ipykernel
   - matplotlib
   - black
+  - jq
+  - make
   - pip:
     - s3fs==0.4.2
-    - pylint==2.7.2
+    - pylint
     - nibabel
+    - git+https://github.com/PyTorchLightning/pytorch-lightning.git

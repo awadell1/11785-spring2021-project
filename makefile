@@ -20,6 +20,9 @@ data/%:
 TEST_FILES := data/Brats17TrainingData/HGG/Brats17_2013_2_1
 TEST_FILES += data/Brats17TrainingData/LGG/Brats17_2013_0_1
 
+# Use the full set for training
+TRAIN_FILES := data/Brats17TrainingData
+
 # Run Tests
 PHONY: test test-coverage
 test: conda.install $(TEST_FILES)
@@ -29,3 +32,9 @@ test: conda.install $(TEST_FILES)
 test-coverage: conda.install $(TEST_FILES)
 	$(CONDA_ACTIVATE)
 	python3 -m pytest --cov-report xml tests
+
+train-% : src/%.py conda.install $(TRAIN_FILES)
+	$(CONDA_ACTIVATE)
+	python -m src.$* $(ARGS)
+
+include aws/makefile

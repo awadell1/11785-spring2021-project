@@ -2,7 +2,7 @@ from pathlib import Path
 from itertools import product
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler, SubsetRandomSampler
 import nibabel as nib
 from sklearn.model_selection import train_test_split
 
@@ -15,14 +15,14 @@ class Brats2017(Dataset):
         patch_size=144,
         patch_depth=19,
         data_type=torch.float32,
-        label_type=torch.int32,
+        label_type=torch.long,
         flat_patch=None,
         n_samples=None,
     ) -> None:
         super().__init__()
 
         # Parse Arguments
-        self.modality_postfix = ["flair", "t1", "t1ce", "t2"]
+        self.modality_postfix = ["FLAIR", "T1", "T1Gd", "T2"]
         self.label_postfix = "seg"
         self.direction = direction
         self.patch_shape = (patch_size, patch_size, patch_depth)
@@ -40,11 +40,11 @@ class Brats2017(Dataset):
 
         if n_samples is not None:
             self.patients_dirs = self.patients_dirs[:n_samples]
-
         # Load scans into memore
         scans = []
         labels = []
-        for p_dir in self.patients_dirs:
+        for idx, p_dir in enumerate(self.patients_dirs):
+            print(f"Loading patient {idx} from {p_dir}")
             scan, label = self.load_patient(p_dir)
             scans.append(scan)
             labels.append(label)
@@ -92,7 +92,8 @@ class Brats2017(Dataset):
         nii_volumes = []
         for mod in self.modality_postfix + [self.label_postfix]:
             # Get nii image
-            filename = patient_dir.joinpath(f"{patient_dir.name}_{mod}.nii.gz")
+            mod = mod if mod != "T1Gd" else "t1ce"
+            filename = patient_dir.joinpath(f"{patient_dir.name}_{mod.lower()}.nii.gz")
             nii_data = nib.load(filename)
 
             # Slice to patch
@@ -175,6 +176,43 @@ class Brats2017(Dataset):
             Brats2017(val, **kwarg),
             Brats2017(test, **kwarg),
         )
+
+    @staticmethod
+    def train_sampler(ds, empty_weight=0.0, health_weight=0.6, tumor_weight=0.4):
+        """Build a sampler for balancing out the Brats dataset"""
+        sample_score = torch.zeros((len(ds),))
+        eps_score = 0.01 / len(ds)
+        n_samples = 0
+        for idx, (data, label) in enumerate(ds):
+            if torch.all(data == 0):
+                sample_score[idx] = empty_weight + eps_score
+            elif torch.any(label != 0):
+                sample_score[idx] = tumor_weight + eps_score
+                n_samples += 1
+            else:
+                sample_score[idx] = health_weight + eps_score
+                n_samples += 1
+
+        # Wrap with WeightedRandomSampler
+        sampler = WeightedRandomSampler(sample_score, n_samples, replacement=False)
+
+        return sampler
+
+    @staticmethod
+    def test_sampler(ds, p_blank=0.01, n_blank=None):
+        """Build a sampler that limits the number of blank patches"""
+        indices = []
+        if n_blank is None:
+            n_blank = max(int(p_blank * len(ds)), 1)
+
+        for idx, (_, label) in enumerate(ds):
+            if not torch.all(label == 0):
+                indices.append(idx)
+            elif n_blank > 0:
+                indices.append(idx)
+                n_blank -= 1
+
+        return SubsetRandomSampler(indices)
 
 
 def patch_indices(input_size, output_size):

@@ -18,6 +18,7 @@ coverage.xml
 wandb/
 /runner/
 artifacts/
+sweep*.yml
 
 # Misc
 *.zip
